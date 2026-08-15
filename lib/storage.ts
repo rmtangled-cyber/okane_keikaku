@@ -36,6 +36,25 @@ export function saveSnapshots(snapshots: MonthlySnapshot[]): void {
   localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(snapshots));
 }
 
+export function exportToCSV(assets: Asset[]): void {
+  const header = ["カテゴリ", "資産名", "金額（円）", "メモ", "更新日時"];
+  const rows = assets.map(a => [
+    a.category,
+    a.name,
+    String(a.amount),
+    a.note ?? "",
+    new Date(a.updatedAt).toLocaleDateString("ja-JP"),
+  ]);
+  const csv = [header, ...rows].map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `okane_assets_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function getDefaultAssets(): Asset[] {
   return [
     { id: "1", name: "普通預金（メインバンク）", category: "現金・預金", amount: 1500000, updatedAt: new Date().toISOString() },
