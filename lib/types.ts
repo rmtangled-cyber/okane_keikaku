@@ -88,3 +88,50 @@ export interface MonthlySnapshot {
   total: number;
   breakdown: Partial<Record<AssetCategory, number>>;
 }
+
+// 月次支出
+export type ExpenseCategory =
+  | "食費" | "住居費" | "交通費" | "水道光熱費" | "通信費"
+  | "医療費" | "娯楽費" | "教育費" | "保険料" | "その他";
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "食費", "住居費", "交通費", "水道光熱費", "通信費",
+  "医療費", "娯楽費", "教育費", "保険料", "その他",
+];
+
+export interface MonthlyExpense {
+  id: string;
+  name: string;
+  category: ExpenseCategory;
+  amount: number;    // 月額（円）
+  isFixed: boolean;  // 固定費 / 変動費
+  note?: string;
+  updatedAt: string;
+}
+
+// 収入プロファイル（給与）
+export interface IncomeProfile {
+  id: string;
+  name: string;          // ラベル（例: "現職"）
+  grossMonthly: number;  // 額面月収（円）
+  prefecture: string;    // 都道府県（協会けんぽ保険料率用）
+  age: number;
+  dependents: number;    // 扶養家族数
+  note?: string;
+  updatedAt: string;
+}
+
+// ライフイベント
+export type LifeEventType =
+  | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";
+
+export interface LifeEvent {
+  id: string;
+  title: string;
+  year: number;
+  type: LifeEventType;
+  monthlyAmountChange: number; // 月次収支への継続的影響（+/-）
+  oneTimeAmount: number;       // 一時金（0なら無し）
+  note?: string;
+  updatedAt: string;
+}

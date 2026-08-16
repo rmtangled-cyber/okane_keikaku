@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { getUid } from "./uid";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -38,6 +38,9 @@ const KEYS = {
   snapshots: "okane_snapshots",
   stocks: "okane_stocks",
   funds: "okane_funds",
+  expenses: "okane_expenses",
+  incomeProfiles: "okane_incomeProfiles",
+  lifeEvents: "okane_lifeEvents",
 } as const;
 
 type StoreKey = keyof typeof KEYS;
@@ -132,6 +135,48 @@ export async function loadSnapshots(): Promise<MonthlySnapshot[]> {
   return getSnapshots();
 }
 
+// Expenses
+export function getExpenses(): MonthlyExpense[] { return localGet("expenses") ?? getDefaultExpenses(); }
+export function saveExpenses(items: MonthlyExpense[]): void {
+  localSet("expenses", items);
+  fsSaveAll("expenses", items).catch(console.error);
+}
+export async function loadExpenses(): Promise<MonthlyExpense[]> {
+  try {
+    const items = await fsGetAll<MonthlyExpense>("expenses");
+    if (items.length > 0) { localSet("expenses", items); return items; }
+  } catch { /* offline fallback */ }
+  return getExpenses();
+}
+
+// Income Profiles
+export function getIncomeProfiles(): IncomeProfile[] { return localGet("incomeProfiles") ?? getDefaultIncomeProfiles(); }
+export function saveIncomeProfiles(items: IncomeProfile[]): void {
+  localSet("incomeProfiles", items);
+  fsSaveAll("incomeProfiles", items).catch(console.error);
+}
+export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
+  try {
+    const items = await fsGetAll<IncomeProfile>("incomeProfiles");
+    if (items.length > 0) { localSet("incomeProfiles", items); return items; }
+  } catch { /* offline fallback */ }
+  return getIncomeProfiles();
+}
+
+// Life Events
+export function getLifeEvents(): LifeEvent[] { return localGet("lifeEvents") ?? []; }
+export function saveLifeEvents(items: LifeEvent[]): void {
+  localSet("lifeEvents", items);
+  fsSaveAll("lifeEvents", items).catch(console.error);
+}
+export async function loadLifeEvents(): Promise<LifeEvent[]> {
+  try {
+    const items = await fsGetAll<LifeEvent>("lifeEvents");
+    if (items.length > 0) { localSet("lifeEvents", items); return items; }
+  } catch { /* offline fallback */ }
+  return getLifeEvents();
+}
+
 // CSV export
 export function exportToCSV(assets: Asset[]): void {
   const header = ["カテゴリ", "資産名", "金額（円）", "メモ", "更新日時"];
@@ -187,6 +232,22 @@ function getDefaultStocks(): StockHolding[] {
   return [
     { id: "s1", ticker: "7203", name: "トヨタ自動車", accountType: "特定口座", purchasePrice: 2500, shares: 100, currentPrice: 3200, purchaseDate: "2023-04-01", updatedAt: new Date().toISOString() },
     { id: "s2", ticker: "VTI", name: "Vanguard Total Stock Market ETF", accountType: "NISA（成長投資枠）", purchasePrice: 22000, shares: 10, currentPrice: 28000, purchaseDate: "2022-10-15", updatedAt: new Date().toISOString() },
+  ];
+}
+
+function getDefaultExpenses(): MonthlyExpense[] {
+  return [
+    { id: "e1", name: "家賃", category: "住居費", amount: 80000, isFixed: true, updatedAt: new Date().toISOString() },
+    { id: "e2", name: "食費・外食", category: "食費", amount: 40000, isFixed: false, updatedAt: new Date().toISOString() },
+    { id: "e3", name: "水道光熱費", category: "水道光熱費", amount: 10000, isFixed: true, updatedAt: new Date().toISOString() },
+    { id: "e4", name: "通信費", category: "通信費", amount: 5000, isFixed: true, updatedAt: new Date().toISOString() },
+    { id: "e5", name: "娯楽費", category: "娯楽費", amount: 20000, isFixed: false, updatedAt: new Date().toISOString() },
+  ];
+}
+
+function getDefaultIncomeProfiles(): IncomeProfile[] {
+  return [
+    { id: "i1", name: "現職", grossMonthly: 350000, prefecture: "東京", age: 30, dependents: 0, updatedAt: new Date().toISOString() },
   ];
 }
 

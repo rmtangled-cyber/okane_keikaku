@@ -3,11 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine,
+  AreaChart, Area,
 } from "recharts";
-import { Plus, TrendingUp, Wallet, Target, RefreshCw, Download, BarChart2, Layers } from "lucide-react";
+import {
+  Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
+  BarChart2, Layers, Receipt, MapPin,
+} from "lucide-react";
 
-import { Asset, AssetCategory, Goal, StockHolding, FundHolding, calcTax } from "@/lib/types";
+import {
+  Asset, AssetCategory, Goal, StockHolding, FundHolding,
+  MonthlyExpense, IncomeProfile, LifeEvent, calcTax,
+} from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
   getGoals, saveGoals, loadGoals,
@@ -15,7 +22,11 @@ import {
   exportToCSV,
   getStocks, saveStocks, loadStocks,
   getFunds, saveFunds, loadFunds,
+  getExpenses, saveExpenses, loadExpenses,
+  getIncomeProfiles, saveIncomeProfiles, loadIncomeProfiles,
+  getLifeEvents, saveLifeEvents, loadLifeEvents,
 } from "@/lib/storage";
+import { calcTakeHome } from "@/lib/taxCalc";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
 import GoalCard from "./GoalCard";
@@ -24,6 +35,12 @@ import StockCard from "./StockCard";
 import StockModal from "./StockModal";
 import FundCard from "./FundCard";
 import FundModal from "./FundModal";
+import ExpenseCard from "./ExpenseCard";
+import ExpenseModal from "./ExpenseModal";
+import IncomeProfileCard from "./IncomeProfileCard";
+import IncomeProfileModal from "./IncomeProfileModal";
+import LifeEventCard from "./LifeEventCard";
+import LifeEventModal from "./LifeEventModal";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
@@ -34,7 +51,61 @@ const CATEGORY_COLOR: Record<string, string> = {
   "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "ライフプラン";
+
+// ── Life Plan Simulation ───────────────────────────────────────────────────────
+
+function computeWeightedReturn(
+  funds: FundHolding[],
+  stocks: StockHolding[],
+  assets: Asset[],
+): number {
+  const fundsVal = funds.reduce((s, f) => s + f.currentValue, 0);
+  const stocksVal = stocks.reduce((s, h) => s + h.currentPrice * h.shares, 0);
+  const cashVal = assets.reduce((s, a) => s + a.amount, 0);
+  const total = fundsVal + stocksVal + cashVal;
+  if (total === 0) return 0;
+  const fundsReturn = funds.reduce((s, f) => s + f.currentValue * (f.expectedAnnualReturn / 100), 0);
+  const stocksReturn = stocksVal * 0.05; // 株式はデフォルト5%
+  return (fundsReturn + stocksReturn) / total;
+}
+
+interface SimPoint { year: number; assets: number; savings: number }
+
+function simulate(
+  startAssets: number,
+  monthlyTakeHome: number,
+  monthlyExpenses: number,
+  lifeEvents: LifeEvent[],
+  weightedReturn: number,
+  startYear: number,
+  yearsToProject: number,
+): SimPoint[] {
+  const points: SimPoint[] = [];
+  let assets = startAssets;
+
+  for (let i = 0; i <= yearsToProject; i++) {
+    const year = startYear + i;
+    // cumulative monthly change from life events active by this year
+    const cumulativeMonthly = lifeEvents
+      .filter(e => e.year <= year)
+      .reduce((s, e) => s + e.monthlyAmountChange, 0);
+    const oneTime = lifeEvents
+      .filter(e => e.year === year)
+      .reduce((s, e) => s + e.oneTimeAmount, 0);
+
+    const monthlySavings = monthlyTakeHome - monthlyExpenses + cumulativeMonthly;
+    const annualSavings = monthlySavings * 12;
+    const investmentReturn = assets * weightedReturn;
+    const savings = annualSavings + oneTime;
+
+    if (i > 0) {
+      assets = assets + investmentReturn + savings;
+    }
+    points.push({ year, assets: Math.round(assets), savings: Math.round(savings) });
+  }
+  return points;
+}
 
 export default function Dashboard() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -42,6 +113,9 @@ export default function Dashboard() {
   const [funds, setFunds] = useState<FundHolding[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [snapshots, setSnapshots] = useState<{ month: string; total: number }[]>([]);
+  const [expenses, setExpenses] = useState<MonthlyExpense[]>([]);
+  const [incomeProfiles, setIncomeProfiles] = useState<IncomeProfile[]>([]);
+  const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [tab, setTab] = useState<Tab>("概要");
 
   const [showAssetModal, setShowAssetModal] = useState(false);
@@ -52,20 +126,30 @@ export default function Dashboard() {
   const [editingFund, setEditingFund] = useState<FundHolding | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<MonthlyExpense | null>(null);
+  const [showIncomeModal, setShowIncomeModal] = useState(false);
+  const [editingIncome, setEditingIncome] = useState<IncomeProfile | null>(null);
+  const [showLifeEventModal, setShowLifeEventModal] = useState(false);
+  const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
 
   useEffect(() => {
-    // キャッシュで即時表示
     setAssets(getAssets());
     setStocks(getStocks());
     setFunds(getFunds());
     setGoals(getGoals());
     setSnapshots(getSnapshots());
-    // Firestoreから最新データを取得してバックグラウンドで更新
+    setExpenses(getExpenses());
+    setIncomeProfiles(getIncomeProfiles());
+    setLifeEvents(getLifeEvents());
     loadAssets().then(setAssets);
     loadStocks().then(setStocks);
     loadFunds().then(setFunds);
     loadGoals().then(setGoals);
     loadSnapshots().then(setSnapshots);
+    loadExpenses().then(setExpenses);
+    loadIncomeProfiles().then(setIncomeProfiles);
+    loadLifeEvents().then(setLifeEvents);
   }, []);
 
   // ── Totals ────────────────────────────────────────────
@@ -75,14 +159,20 @@ export default function Dashboard() {
   const grandTotal = stocksTotal + fundsTotal + assetsTotal;
 
   const stocksGain = stocks.reduce((s, h) => s + (h.currentPrice - h.purchasePrice) * h.shares, 0);
-  const stocksTax = stocks.reduce((s, h) => {
-    const gain = (h.currentPrice - h.purchasePrice) * h.shares;
-    return s + calcTax(gain, h.accountType);
-  }, 0);
+  const stocksTax = stocks.reduce((s, h) => s + calcTax((h.currentPrice - h.purchasePrice) * h.shares, h.accountType), 0);
   const fundsGain = funds.reduce((s, f) => s + (f.currentValue - f.purchaseAmount), 0);
-  const fundsTax = funds.reduce((s, f) => {
-    return s + calcTax(f.currentValue - f.purchaseAmount, f.accountType);
-  }, 0);
+  const fundsTax = funds.reduce((s, f) => s + calcTax(f.currentValue - f.purchaseAmount, f.accountType), 0);
+
+  // ── 収支 ──────────────────────────────────────────────
+  const primaryProfile = incomeProfiles[0] ?? null;
+  const takeHomeResult = primaryProfile
+    ? calcTakeHome(primaryProfile.grossMonthly, primaryProfile.prefecture, primaryProfile.age, primaryProfile.dependents)
+    : null;
+  const monthlyTakeHome = takeHomeResult?.takeHome ?? 0;
+  const fixedExpenses = expenses.filter(e => e.isFixed).reduce((s, e) => s + e.amount, 0);
+  const variableExpenses = expenses.filter(e => !e.isFixed).reduce((s, e) => s + e.amount, 0);
+  const totalExpenses = fixedExpenses + variableExpenses;
+  const monthlySavings = monthlyTakeHome - totalExpenses;
 
   // Pie data
   const pieData = [
@@ -95,6 +185,18 @@ export default function Dashboard() {
       }, {})
     ).map(([name, value]) => ({ name, value: value as number })),
   ].filter(d => d.value > 0);
+
+  // ── Life Plan Simulation ──────────────────────────────
+  const weightedReturn = computeWeightedReturn(funds, stocks, assets);
+  const simData = simulate(
+    grandTotal,
+    monthlyTakeHome,
+    totalExpenses,
+    lifeEvents.sort((a, b) => a.year - b.year),
+    weightedReturn,
+    new Date().getFullYear(),
+    40,
+  );
 
   // ── Asset CRUD ────────────────────────────────────────
   const handleSaveAsset = useCallback((data: Omit<Asset, "id" | "updatedAt">) => {
@@ -161,6 +263,54 @@ export default function Dashboard() {
     setGoals(prev => { const next = prev.filter(g => g.id !== id); saveGoals(next); return next; });
   }, []);
 
+  // ── Expense CRUD ──────────────────────────────────────
+  const handleSaveExpense = useCallback((data: Omit<MonthlyExpense, "id" | "updatedAt">) => {
+    setExpenses(prev => {
+      const next = editingExpense
+        ? prev.map(e => e.id === editingExpense.id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e)
+        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
+      saveExpenses(next);
+      return next;
+    });
+    setShowExpenseModal(false); setEditingExpense(null);
+  }, [editingExpense]);
+
+  const handleDeleteExpense = useCallback((id: string) => {
+    setExpenses(prev => { const next = prev.filter(e => e.id !== id); saveExpenses(next); return next; });
+  }, []);
+
+  // ── Income CRUD ───────────────────────────────────────
+  const handleSaveIncome = useCallback((data: Omit<IncomeProfile, "id" | "updatedAt">) => {
+    setIncomeProfiles(prev => {
+      const next = editingIncome
+        ? prev.map(p => p.id === editingIncome.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p)
+        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
+      saveIncomeProfiles(next);
+      return next;
+    });
+    setShowIncomeModal(false); setEditingIncome(null);
+  }, [editingIncome]);
+
+  const handleDeleteIncome = useCallback((id: string) => {
+    setIncomeProfiles(prev => { const next = prev.filter(p => p.id !== id); saveIncomeProfiles(next); return next; });
+  }, []);
+
+  // ── LifeEvent CRUD ────────────────────────────────────
+  const handleSaveLifeEvent = useCallback((data: Omit<LifeEvent, "id" | "updatedAt">) => {
+    setLifeEvents(prev => {
+      const next = editingLifeEvent
+        ? prev.map(e => e.id === editingLifeEvent.id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e)
+        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
+      saveLifeEvents(next);
+      return next;
+    });
+    setShowLifeEventModal(false); setEditingLifeEvent(null);
+  }, [editingLifeEvent]);
+
+  const handleDeleteLifeEvent = useCallback((id: string) => {
+    setLifeEvents(prev => { const next = prev.filter(e => e.id !== id); saveLifeEvents(next); return next; });
+  }, []);
+
   // ── Snapshot ──────────────────────────────────────────
   const handleSnapshot = useCallback(() => {
     const month = new Date().toISOString().slice(0, 7);
@@ -205,6 +355,20 @@ export default function Dashboard() {
             <Plus size={15} /> 目標追加
           </button>
         );
+      case "収支":
+        return (
+          <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
+            <Plus size={15} /> 支出追加
+          </button>
+        );
+      case "ライフプラン":
+        return (
+          <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
+            <Plus size={15} /> イベント追加
+          </button>
+        );
       default:
         return null;
     }
@@ -234,13 +398,15 @@ export default function Dashboard() {
           </div>
         </div>
         {/* Tabs */}
-        <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-4 border-t border-gray-50 overflow-x-auto">
+        <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-3 border-t border-gray-50 overflow-x-auto">
           {([
             { key: "概要", icon: <BarChart2 size={14} /> },
             { key: "株式", icon: <TrendingUp size={14} /> },
             { key: "投資信託", icon: <Layers size={14} /> },
             { key: "資産", icon: <Wallet size={14} /> },
             { key: "目標", icon: <Target size={14} /> },
+            { key: "収支", icon: <Receipt size={14} /> },
+            { key: "ライフプラン", icon: <MapPin size={14} /> },
           ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
             <button key={key} onClick={() => setTab(key)}
               className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
@@ -268,9 +434,7 @@ export default function Dashboard() {
         {/* ── 概要 ─────────────────────────────────────── */}
         {tab === "概要" && (
           <>
-            {/* Stat cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {/* Stocks summary */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-3 h-3 rounded-full bg-green-500" />
@@ -281,7 +445,6 @@ export default function Dashboard() {
                   {stocksGain >= 0 ? "+" : ""}{stocksGain.toLocaleString()}円
                 </div>
               </div>
-              {/* Funds summary */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-3 h-3 rounded-full bg-purple-500" />
@@ -292,7 +455,6 @@ export default function Dashboard() {
                   {fundsGain >= 0 ? "+" : ""}{fundsGain.toLocaleString()}円
                 </div>
               </div>
-              {/* Tax estimate */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm col-span-2 sm:col-span-1">
                 <div className="text-xs text-gray-500 mb-2">今売ったら税金（概算）</div>
                 <div className="font-bold text-orange-600">¥{(stocksTax + fundsTax).toLocaleString()}</div>
@@ -300,7 +462,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Charts */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -352,7 +513,6 @@ export default function Dashboard() {
         {/* ── 株式 ─────────────────────────────────────── */}
         {tab === "株式" && (
           <div className="space-y-4">
-            {/* Summary bar */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
               <div>
                 <div className="text-xs text-gray-400">評価額合計</div>
@@ -393,7 +553,6 @@ export default function Dashboard() {
         {/* ── 投資信託 ──────────────────────────────────── */}
         {tab === "投資信託" && (
           <div className="space-y-4">
-            {/* Summary bar */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
               <div>
                 <div className="text-xs text-gray-400">評価額合計</div>
@@ -469,6 +628,179 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* ── 収支 ─────────────────────────────────────── */}
+        {tab === "収支" && (
+          <div className="space-y-5">
+            {/* Income section */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">収入プロファイル</h3>
+                <button onClick={() => { setEditingIncome(null); setShowIncomeModal(true); }}
+                  className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
+                  <Plus size={12} /> 追加
+                </button>
+              </div>
+              {incomeProfiles.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
+                  <p className="text-sm">収入プロファイルがありません</p>
+                  <button onClick={() => { setEditingIncome(null); setShowIncomeModal(true); }}
+                    className="mt-2 text-xs text-teal-600 hover:underline">給与情報を入力する</button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {incomeProfiles.map(p => (
+                    <IncomeProfileCard key={p.id} profile={p}
+                      onEdit={p => { setEditingIncome(p); setShowIncomeModal(true); }}
+                      onDelete={handleDeleteIncome} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Expense section */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">月次支出</h3>
+                <div className="flex gap-3 text-xs text-gray-500">
+                  <span>固定費 ¥{fixedExpenses.toLocaleString()}</span>
+                  <span>変動費 ¥{variableExpenses.toLocaleString()}</span>
+                </div>
+              </div>
+              {expenses.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
+                  <p className="text-sm">支出がありません</p>
+                  <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
+                    className="mt-2 text-xs text-rose-600 hover:underline">最初の支出を追加する</button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {expenses.map(e => (
+                    <ExpenseCard key={e.id} expense={e}
+                      onEdit={e => { setEditingExpense(e); setShowExpenseModal(true); }}
+                      onDelete={handleDeleteExpense} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Monthly balance summary */}
+            {(monthlyTakeHome > 0 || totalExpenses > 0) && (
+              <div className={`rounded-2xl p-5 ${monthlySavings >= 0 ? "bg-green-50 border border-green-100" : "bg-red-50 border border-red-100"}`}>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">月間収支サマリー</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">手取り収入</span>
+                    <span className="font-medium text-teal-700">+¥{monthlyTakeHome.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">支出合計</span>
+                    <span className="font-medium text-rose-600">−¥{totalExpenses.toLocaleString()}</span>
+                  </div>
+                  <div className={`flex justify-between font-bold pt-2 border-t ${monthlySavings >= 0 ? "border-green-200" : "border-red-200"}`}>
+                    <span className="text-gray-800">月間収支</span>
+                    <span className={monthlySavings >= 0 ? "text-green-700" : "text-red-700"}>
+                      {monthlySavings >= 0 ? "+" : ""}¥{monthlySavings.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>年間貯蓄予測</span>
+                    <span>{(monthlySavings * 12) >= 0 ? "+" : ""}¥{(monthlySavings * 12).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ライフプラン ──────────────────────────────── */}
+        {tab === "ライフプラン" && (
+          <div className="space-y-5">
+            {/* Simulation chart */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（40年）
+              </h3>
+              <p className="text-xs text-gray-400 mb-4">
+                現在の収支・投資リターンをもとにした試算
+                {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
+              </p>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={simData}>
+                  <defs>
+                    <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`} interval={4} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
+                    v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
+                  } width={52} />
+                  <Tooltip
+                    formatter={(v) => {
+                      const n = typeof v === "number" ? v : 0;
+                      return n >= 100000000 ? `¥${(n / 100000000).toFixed(2)}億` : `¥${n.toLocaleString()}`;
+                    }}
+                    labelFormatter={l => `${l}年`}
+                  />
+                  {lifeEvents.map(e => (
+                    <ReferenceLine key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
+                      label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
+                  ))}
+                  <Area type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2}
+                    fill="url(#assetGrad)" name="総資産" />
+                </AreaChart>
+              </ResponsiveContainer>
+
+              {/* Milestone cards */}
+              <div className="grid grid-cols-4 gap-2 mt-4">
+                {[10, 20, 30, 40].map(y => {
+                  const pt = simData[y];
+                  const v = pt?.assets ?? 0;
+                  return (
+                    <div key={y} className="bg-violet-50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-gray-400">{y}年後</div>
+                      <div className="text-xs font-bold text-violet-700">
+                        {v >= 100000000 ? `${(v / 100000000).toFixed(1)}億` : `${Math.round(v / 10000)}万`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!primaryProfile && (
+                <div className="mt-3 text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
+                  ※ 収支タブで収入プロファイルを設定すると、貯蓄を含めたより正確なシミュレーションができます
+                </div>
+              )}
+            </div>
+
+            {/* Life events */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">ライフイベント</h3>
+              </div>
+              {lifeEvents.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
+                  <MapPin size={32} className="mx-auto mb-3 text-gray-200" />
+                  <p className="text-sm">ライフイベントがありません</p>
+                  <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
+                    className="mt-2 text-xs text-violet-600 hover:underline">転職・結婚・住宅購入などを追加する</button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...lifeEvents].sort((a, b) => a.year - b.year).map(e => (
+                    <LifeEventCard key={e.id} event={e}
+                      onEdit={e => { setEditingLifeEvent(e); setShowLifeEventModal(true); }}
+                      onDelete={handleDeleteLifeEvent} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modals */}
@@ -487,6 +819,18 @@ export default function Dashboard() {
       {showGoalModal && (
         <GoalModal goal={editingGoal} totalAssets={grandTotal} onSave={handleSaveGoal}
           onClose={() => { setShowGoalModal(false); setEditingGoal(null); }} />
+      )}
+      {showExpenseModal && (
+        <ExpenseModal expense={editingExpense} onSave={handleSaveExpense}
+          onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />
+      )}
+      {showIncomeModal && (
+        <IncomeProfileModal profile={editingIncome} onSave={handleSaveIncome}
+          onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />
+      )}
+      {showLifeEventModal && (
+        <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent}
+          onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />
       )}
     </div>
   );
