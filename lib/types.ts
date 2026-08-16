@@ -121,6 +121,28 @@ export interface IncomeProfile {
   updatedAt: string;
 }
 
+// 保険プラン
+export type InsuranceType =
+  | "生命保険" | "医療保険" | "がん保険" | "火災保険"
+  | "地震保険" | "車両保険" | "学資保険" | "その他";
+
+export const INSURANCE_TYPES: InsuranceType[] = [
+  "生命保険", "医療保険", "がん保険", "火災保険",
+  "地震保険", "車両保険", "学資保険", "その他",
+];
+
+export interface InsurancePlan {
+  id: string;
+  name: string;
+  type: InsuranceType;
+  premiumMonthly: number;  // 月額保険料（円）
+  startDate: string;       // "YYYY-MM"
+  endDate?: string;        // "YYYY-MM"（未設定 = 終身）
+  coverageAmount?: number; // 保険金額（円）
+  note?: string;
+  updatedAt: string;
+}
+
 // ライフイベント
 export type LifeEventType =
   | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";

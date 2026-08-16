@@ -13,7 +13,7 @@ import {
 
 import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
-  MonthlyExpense, IncomeProfile, LifeEvent, calcTax,
+  MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, calcTax,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -25,6 +25,7 @@ import {
   getExpenses, saveExpenses, loadExpenses,
   getIncomeProfiles, saveIncomeProfiles, loadIncomeProfiles,
   getLifeEvents, saveLifeEvents, loadLifeEvents,
+  getInsurancePlans, saveInsurancePlans, loadInsurancePlans,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
 import AssetCard from "./AssetCard";
@@ -41,6 +42,8 @@ import IncomeProfileCard from "./IncomeProfileCard";
 import IncomeProfileModal from "./IncomeProfileModal";
 import LifeEventCard from "./LifeEventCard";
 import LifeEventModal from "./LifeEventModal";
+import InsurancePlanCard from "./InsurancePlanCard";
+import InsurancePlanModal from "./InsurancePlanModal";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
@@ -116,6 +119,7 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState<MonthlyExpense[]>([]);
   const [incomeProfiles, setIncomeProfiles] = useState<IncomeProfile[]>([]);
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
+  const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>([]);
   const [tab, setTab] = useState<Tab>("概要");
 
   const [showAssetModal, setShowAssetModal] = useState(false);
@@ -132,6 +136,8 @@ export default function Dashboard() {
   const [editingIncome, setEditingIncome] = useState<IncomeProfile | null>(null);
   const [showLifeEventModal, setShowLifeEventModal] = useState(false);
   const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+  const [editingInsurance, setEditingInsurance] = useState<InsurancePlan | null>(null);
 
   useEffect(() => {
     setAssets(getAssets());
@@ -142,6 +148,7 @@ export default function Dashboard() {
     setExpenses(getExpenses());
     setIncomeProfiles(getIncomeProfiles());
     setLifeEvents(getLifeEvents());
+    setInsurancePlans(getInsurancePlans());
     loadAssets().then(setAssets);
     loadStocks().then(setStocks);
     loadFunds().then(setFunds);
@@ -150,6 +157,7 @@ export default function Dashboard() {
     loadExpenses().then(setExpenses);
     loadIncomeProfiles().then(setIncomeProfiles);
     loadLifeEvents().then(setLifeEvents);
+    loadInsurancePlans().then(setInsurancePlans);
   }, []);
 
   // ── Totals ────────────────────────────────────────────
@@ -171,7 +179,10 @@ export default function Dashboard() {
   const monthlyTakeHome = takeHomeResult?.takeHome ?? 0;
   const fixedExpenses = expenses.filter(e => e.isFixed).reduce((s, e) => s + e.amount, 0);
   const variableExpenses = expenses.filter(e => !e.isFixed).reduce((s, e) => s + e.amount, 0);
-  const totalExpenses = fixedExpenses + variableExpenses;
+  const nowYM = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+  const activeInsurance = insurancePlans.filter(p => !p.endDate || p.endDate > nowYM);
+  const insurancePremiums = activeInsurance.reduce((s, p) => s + p.premiumMonthly, 0);
+  const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums;
   const monthlySavings = monthlyTakeHome - totalExpenses;
 
   // Pie data
@@ -311,6 +322,22 @@ export default function Dashboard() {
     setLifeEvents(prev => { const next = prev.filter(e => e.id !== id); saveLifeEvents(next); return next; });
   }, []);
 
+  // ── Insurance CRUD ────────────────────────────────────
+  const handleSaveInsurance = useCallback((data: Omit<InsurancePlan, "id" | "updatedAt">) => {
+    setInsurancePlans(prev => {
+      const next = editingInsurance
+        ? prev.map(p => p.id === editingInsurance.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p)
+        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
+      saveInsurancePlans(next);
+      return next;
+    });
+    setShowInsuranceModal(false); setEditingInsurance(null);
+  }, [editingInsurance]);
+
+  const handleDeleteInsurance = useCallback((id: string) => {
+    setInsurancePlans(prev => { const next = prev.filter(p => p.id !== id); saveInsurancePlans(next); return next; });
+  }, []);
+
   // ── Snapshot ──────────────────────────────────────────
   const handleSnapshot = useCallback(() => {
     const month = new Date().toISOString().slice(0, 7);
@@ -357,10 +384,16 @@ export default function Dashboard() {
         );
       case "収支":
         return (
-          <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
-            <Plus size={15} /> 支出追加
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setEditingInsurance(null); setShowInsuranceModal(true); }}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors">
+              <Plus size={15} /> 保険追加
+            </button>
+            <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
+              <Plus size={15} /> 支出追加
+            </button>
+          </div>
         );
       case "ライフプラン":
         return (
@@ -658,6 +691,31 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Insurance section */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">保険</h3>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>支払い中 {activeInsurance.length}件 · 月計 ¥{insurancePremiums.toLocaleString()}</span>
+                </div>
+              </div>
+              {insurancePlans.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-6 text-center text-gray-400 shadow-sm">
+                  <p className="text-sm">保険が登録されていません</p>
+                  <button onClick={() => { setEditingInsurance(null); setShowInsuranceModal(true); }}
+                    className="mt-2 text-xs text-sky-600 hover:underline">保険を追加する</button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {insurancePlans.map(p => (
+                    <InsurancePlanCard key={p.id} plan={p}
+                      onEdit={p => { setEditingInsurance(p); setShowInsuranceModal(true); }}
+                      onDelete={handleDeleteInsurance} />
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Expense section */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -694,9 +752,15 @@ export default function Dashboard() {
                     <span className="font-medium text-teal-700">+¥{monthlyTakeHome.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">支出合計</span>
-                    <span className="font-medium text-rose-600">−¥{totalExpenses.toLocaleString()}</span>
+                    <span className="text-gray-600">支出（固定・変動費）</span>
+                    <span className="font-medium text-rose-600">−¥{(fixedExpenses + variableExpenses).toLocaleString()}</span>
                   </div>
+                  {insurancePremiums > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">保険料（支払い中）</span>
+                      <span className="font-medium text-rose-600">−¥{insurancePremiums.toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className={`flex justify-between font-bold pt-2 border-t ${monthlySavings >= 0 ? "border-green-200" : "border-red-200"}`}>
                     <span className="text-gray-800">月間収支</span>
                     <span className={monthlySavings >= 0 ? "text-green-700" : "text-red-700"}>
@@ -831,6 +895,10 @@ export default function Dashboard() {
       {showLifeEventModal && (
         <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent}
           onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />
+      )}
+      {showInsuranceModal && (
+        <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance}
+          onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />
       )}
     </div>
   );

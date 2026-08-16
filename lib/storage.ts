@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { getUid } from "./uid";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -41,6 +41,7 @@ const KEYS = {
   expenses: "okane_expenses",
   incomeProfiles: "okane_incomeProfiles",
   lifeEvents: "okane_lifeEvents",
+  insurancePlans: "okane_insurancePlans",
 } as const;
 
 type StoreKey = keyof typeof KEYS;
@@ -163,6 +164,20 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   return getIncomeProfiles();
 }
 
+// Insurance Plans
+export function getInsurancePlans(): InsurancePlan[] { return localGet("insurancePlans") ?? getDefaultInsurancePlans(); }
+export function saveInsurancePlans(items: InsurancePlan[]): void {
+  localSet("insurancePlans", items);
+  fsSaveAll("insurancePlans", items).catch(console.error);
+}
+export async function loadInsurancePlans(): Promise<InsurancePlan[]> {
+  try {
+    const items = await fsGetAll<InsurancePlan>("insurancePlans");
+    if (items.length > 0) { localSet("insurancePlans", items); return items; }
+  } catch { /* offline fallback */ }
+  return getInsurancePlans();
+}
+
 // Life Events
 export function getLifeEvents(): LifeEvent[] { return localGet("lifeEvents") ?? []; }
 export function saveLifeEvents(items: LifeEvent[]): void {
@@ -232,6 +247,16 @@ function getDefaultStocks(): StockHolding[] {
   return [
     { id: "s1", ticker: "7203", name: "トヨタ自動車", accountType: "特定口座", purchasePrice: 2500, shares: 100, currentPrice: 3200, purchaseDate: "2023-04-01", updatedAt: new Date().toISOString() },
     { id: "s2", ticker: "VTI", name: "Vanguard Total Stock Market ETF", accountType: "NISA（成長投資枠）", purchasePrice: 22000, shares: 10, currentPrice: 28000, purchaseDate: "2022-10-15", updatedAt: new Date().toISOString() },
+  ];
+}
+
+function getDefaultInsurancePlans(): InsurancePlan[] {
+  return [
+    {
+      id: "ins1", name: "終身医療保険", type: "医療保険",
+      premiumMonthly: 3500, startDate: "2022-04", coverageAmount: 1000000,
+      updatedAt: new Date().toISOString(),
+    },
   ];
 }
 
