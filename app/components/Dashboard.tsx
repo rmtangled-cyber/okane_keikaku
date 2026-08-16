@@ -9,9 +9,12 @@ import { Plus, TrendingUp, Wallet, Target, RefreshCw, Download, BarChart2, Layer
 
 import { Asset, AssetCategory, Goal, StockHolding, FundHolding, calcTax } from "@/lib/types";
 import {
-  getAssets, saveAssets, getGoals, saveGoals,
-  getSnapshots, saveSnapshots, exportToCSV,
-  getStocks, saveStocks, getFunds, saveFunds,
+  getAssets, saveAssets, loadAssets,
+  getGoals, saveGoals, loadGoals,
+  getSnapshots, saveSnapshots, loadSnapshots,
+  exportToCSV,
+  getStocks, saveStocks, loadStocks,
+  getFunds, saveFunds, loadFunds,
 } from "@/lib/storage";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
@@ -51,11 +54,18 @@ export default function Dashboard() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
 
   useEffect(() => {
+    // キャッシュで即時表示
     setAssets(getAssets());
     setStocks(getStocks());
     setFunds(getFunds());
     setGoals(getGoals());
     setSnapshots(getSnapshots());
+    // Firestoreから最新データを取得してバックグラウンドで更新
+    loadAssets().then(setAssets);
+    loadStocks().then(setStocks);
+    loadFunds().then(setFunds);
+    loadGoals().then(setGoals);
+    loadSnapshots().then(setSnapshots);
   }, []);
 
   // ── Totals ────────────────────────────────────────────

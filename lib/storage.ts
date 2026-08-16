@@ -1,64 +1,138 @@
 "use client";
 
+import {
+  collection, doc, getDocs, writeBatch, deleteDoc,
+} from "firebase/firestore";
+import { db } from "./firebase";
+import { getUid } from "./uid";
 import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding } from "./types";
 
-const ASSETS_KEY = "okane_assets";
-const GOALS_KEY = "okane_goals";
-const SNAPSHOTS_KEY = "okane_snapshots";
-const STOCKS_KEY = "okane_stocks";
-const FUNDS_KEY = "okane_funds";
+// ── Firestore helpers ─────────────────────────────────────────────────────────
 
-// ── Assets ──────────────────────────────────────────────
-export function getAssets(): Asset[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(ASSETS_KEY);
-  return raw ? JSON.parse(raw) : getDefaultAssets();
-}
-export function saveAssets(assets: Asset[]): void {
-  localStorage.setItem(ASSETS_KEY, JSON.stringify(assets));
+function userCol(name: string) {
+  return collection(db, "users", getUid(), name);
 }
 
-// ── Goals ───────────────────────────────────────────────
-export function getGoals(): Goal[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(GOALS_KEY);
-  return raw ? JSON.parse(raw) : getDefaultGoals();
-}
-export function saveGoals(goals: Goal[]): void {
-  localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
+async function fsGetAll<T>(name: string): Promise<T[]> {
+  const snap = await getDocs(userCol(name));
+  return snap.docs.map(d => d.data() as T);
 }
 
-// ── Snapshots ───────────────────────────────────────────
-export function getSnapshots(): MonthlySnapshot[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(SNAPSHOTS_KEY);
-  return raw ? JSON.parse(raw) : getDefaultSnapshots();
-}
-export function saveSnapshots(snapshots: MonthlySnapshot[]): void {
-  localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(snapshots));
-}
-
-// ── Stocks ──────────────────────────────────────────────
-export function getStocks(): StockHolding[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(STOCKS_KEY);
-  return raw ? JSON.parse(raw) : getDefaultStocks();
-}
-export function saveStocks(stocks: StockHolding[]): void {
-  localStorage.setItem(STOCKS_KEY, JSON.stringify(stocks));
+async function fsSaveAll<T extends { id?: string; month?: string }>(name: string, items: T[]): Promise<void> {
+  const col = userCol(name);
+  const batch = writeBatch(db);
+  const snap = await getDocs(col);
+  snap.docs.forEach(d => batch.delete(d.ref));
+  items.forEach(item => {
+    const docId = item.id ?? item.month ?? crypto.randomUUID();
+    batch.set(doc(col, docId), item);
+  });
+  await batch.commit();
 }
 
-// ── Funds ───────────────────────────────────────────────
-export function getFunds(): FundHolding[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(FUNDS_KEY);
-  return raw ? JSON.parse(raw) : getDefaultFunds();
-}
-export function saveFunds(funds: FundHolding[]): void {
-  localStorage.setItem(FUNDS_KEY, JSON.stringify(funds));
+// ── Local cache keys ──────────────────────────────────────────────────────────
+
+const KEYS = {
+  assets: "okane_assets",
+  goals: "okane_goals",
+  snapshots: "okane_snapshots",
+  stocks: "okane_stocks",
+  funds: "okane_funds",
+} as const;
+
+type StoreKey = keyof typeof KEYS;
+
+function localGet<T>(key: StoreKey): T[] | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(KEYS[key]);
+  return raw ? JSON.parse(raw) : null;
 }
 
-// ── Export ──────────────────────────────────────────────
+function localSet<T>(key: StoreKey, data: T[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(KEYS[key], JSON.stringify(data));
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+// getXxx()    → ローカルキャッシュを返す（即時）
+// loadXxx()   → Firestoreから取得してキャッシュ更新（非同期、コンポーネントのuseEffect用）
+// saveXxx()   → ローカル即時保存 + Firestoreへバックグラウンド同期
+
+// Assets
+export function getAssets(): Asset[] { return localGet("assets") ?? getDefaultAssets(); }
+export function saveAssets(items: Asset[]): void {
+  localSet("assets", items);
+  fsSaveAll("assets", items).catch(console.error);
+}
+export async function loadAssets(): Promise<Asset[]> {
+  try {
+    const items = await fsGetAll<Asset>("assets");
+    if (items.length > 0) { localSet("assets", items); return items; }
+  } catch { /* offline fallback */ }
+  return getAssets();
+}
+
+// Stocks
+export function getStocks(): StockHolding[] { return localGet("stocks") ?? getDefaultStocks(); }
+export function saveStocks(items: StockHolding[]): void {
+  localSet("stocks", items);
+  fsSaveAll("stocks", items).catch(console.error);
+}
+export async function loadStocks(): Promise<StockHolding[]> {
+  try {
+    const items = await fsGetAll<StockHolding>("stocks");
+    if (items.length > 0) { localSet("stocks", items); return items; }
+  } catch { /* offline fallback */ }
+  return getStocks();
+}
+
+// Funds
+export function getFunds(): FundHolding[] { return localGet("funds") ?? getDefaultFunds(); }
+export function saveFunds(items: FundHolding[]): void {
+  localSet("funds", items);
+  fsSaveAll("funds", items).catch(console.error);
+}
+export async function loadFunds(): Promise<FundHolding[]> {
+  try {
+    const items = await fsGetAll<FundHolding>("funds");
+    if (items.length > 0) { localSet("funds", items); return items; }
+  } catch { /* offline fallback */ }
+  return getFunds();
+}
+
+// Goals
+export function getGoals(): Goal[] { return localGet("goals") ?? getDefaultGoals(); }
+export function saveGoals(items: Goal[]): void {
+  localSet("goals", items);
+  fsSaveAll("goals", items).catch(console.error);
+}
+export async function loadGoals(): Promise<Goal[]> {
+  try {
+    const items = await fsGetAll<Goal>("goals");
+    if (items.length > 0) { localSet("goals", items); return items; }
+  } catch { /* offline fallback */ }
+  return getGoals();
+}
+
+// Snapshots
+export function getSnapshots(): MonthlySnapshot[] { return localGet("snapshots") ?? getDefaultSnapshots(); }
+export function saveSnapshots(items: MonthlySnapshot[]): void {
+  localSet("snapshots", items);
+  fsSaveAll("snapshots", items).catch(console.error);
+}
+export async function loadSnapshots(): Promise<MonthlySnapshot[]> {
+  try {
+    const items = await fsGetAll<MonthlySnapshot>("snapshots");
+    if (items.length > 0) {
+      const sorted = items.sort((a, b) => a.month.localeCompare(b.month));
+      localSet("snapshots", sorted);
+      return sorted;
+    }
+  } catch { /* offline fallback */ }
+  return getSnapshots();
+}
+
+// CSV export
 export function exportToCSV(assets: Asset[]): void {
   const header = ["カテゴリ", "資産名", "金額（円）", "メモ", "更新日時"];
   const rows = assets.map(a => [
@@ -77,7 +151,8 @@ export function exportToCSV(assets: Asset[]): void {
   URL.revokeObjectURL(url);
 }
 
-// ── Defaults ────────────────────────────────────────────
+// ── Defaults ──────────────────────────────────────────────────────────────────
+
 function getDefaultAssets(): Asset[] {
   return [
     { id: "1", name: "普通預金（メインバンク）", category: "現金・預金", amount: 1500000, updatedAt: new Date().toISOString() },
@@ -98,8 +173,7 @@ function getDefaultSnapshots(): MonthlySnapshot[] {
   const months = ["2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08"];
   const base = 9000000;
   return months.map((month, i) => ({
-    month,
-    total: base + i * 150000,
+    month, total: base + i * 150000,
     breakdown: {
       "現金・預金": 4500000 + i * 20000,
       "株式": 2500000 + i * 80000,
@@ -111,34 +185,14 @@ function getDefaultSnapshots(): MonthlySnapshot[] {
 
 function getDefaultStocks(): StockHolding[] {
   return [
-    {
-      id: "s1", ticker: "7203", name: "トヨタ自動車", accountType: "特定口座",
-      purchasePrice: 2500, shares: 100, currentPrice: 3200,
-      purchaseDate: "2023-04-01", updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "s2", ticker: "VTI", name: "Vanguard Total Stock Market ETF", accountType: "NISA（成長投資枠）",
-      purchasePrice: 22000, shares: 10, currentPrice: 28000,
-      purchaseDate: "2022-10-15", updatedAt: new Date().toISOString(),
-    },
+    { id: "s1", ticker: "7203", name: "トヨタ自動車", accountType: "特定口座", purchasePrice: 2500, shares: 100, currentPrice: 3200, purchaseDate: "2023-04-01", updatedAt: new Date().toISOString() },
+    { id: "s2", ticker: "VTI", name: "Vanguard Total Stock Market ETF", accountType: "NISA（成長投資枠）", purchasePrice: 22000, shares: 10, currentPrice: 28000, purchaseDate: "2022-10-15", updatedAt: new Date().toISOString() },
   ];
 }
 
 function getDefaultFunds(): FundHolding[] {
   return [
-    {
-      id: "f1", name: "eMAXIS Slim 全世界株式（オール・カントリー）",
-      accountType: "NISA（つみたて投資枠）",
-      purchaseAmount: 1200000, currentValue: 1450000,
-      expectedAnnualReturn: 7, monthlyContribution: 50000,
-      startDate: "2022-01-01", updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "f2", name: "SBI・全米株式インデックス・ファンド",
-      accountType: "iDeCo",
-      purchaseAmount: 800000, currentValue: 980000,
-      expectedAnnualReturn: 7, monthlyContribution: 23000,
-      startDate: "2021-06-01", updatedAt: new Date().toISOString(),
-    },
+    { id: "f1", name: "eMAXIS Slim 全世界株式（オール・カントリー）", accountType: "NISA（つみたて投資枠）", purchaseAmount: 1200000, currentValue: 1450000, expectedAnnualReturn: 7, monthlyContribution: 50000, startDate: "2022-01-01", updatedAt: new Date().toISOString() },
+    { id: "f2", name: "SBI・全米株式インデックス・ファンド", accountType: "iDeCo", purchaseAmount: 800000, currentValue: 980000, expectedAnnualReturn: 7, monthlyContribution: 23000, startDate: "2021-06-01", updatedAt: new Date().toISOString() },
   ];
 }
