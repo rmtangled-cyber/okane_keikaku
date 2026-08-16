@@ -1,9 +1,8 @@
 export type AssetCategory =
   | "現金・預金"
-  | "株式"
-  | "投資信託"
   | "債券"
   | "不動産"
+  | "暗号資産"
   | "その他";
 
 export type AccountType =

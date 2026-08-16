@@ -65,7 +65,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="転職、結婚、住宅購入 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
               required
             />
           </div>
@@ -79,7 +79,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
                 onChange={e => setYear(e.target.value)}
                 min={2020}
                 max={2100}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
               />
             </div>
             <div>
@@ -87,7 +87,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
               <select
                 value={type}
                 onChange={e => setType(e.target.value as LifeEventType)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
               >
                 {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -104,7 +104,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
               value={monthlyChange}
               onChange={e => setMonthlyChange(e.target.value)}
               placeholder="例: 50000（収入増）、-30000（支出増）"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
 
@@ -118,7 +118,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
               value={oneTime}
               onChange={e => setOneTime(e.target.value)}
               placeholder="例: -5000000（住宅頭金）、1000000（相続）"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
 
@@ -129,7 +129,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="備考など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
 

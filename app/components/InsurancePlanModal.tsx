@@ -78,7 +78,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="〇〇生命 終身医療保険 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               required
             />
           </div>
@@ -89,7 +89,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
               <select
                 value={type}
                 onChange={e => setType(e.target.value as InsuranceType)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
                 {INSURANCE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -102,7 +102,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
                 onChange={e => setPremiumMonthly(e.target.value)}
                 placeholder="3500"
                 min={0}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 required
               />
             </div>
@@ -114,7 +114,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
               type="month"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
 
@@ -137,7 +137,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
                 min={startDate}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             )}
             {!hasEndDate && (
@@ -180,7 +180,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
               onChange={e => setCoverageAmount(e.target.value)}
               placeholder="10000000"
               min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
 
@@ -191,7 +191,7 @@ export default function InsurancePlanModal({ plan, onSave, onClose }: Props) {
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="保険証券番号、担当者名 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
 

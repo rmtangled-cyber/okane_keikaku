@@ -53,7 +53,7 @@ export default function ExpenseModal({ expense, onSave, onClose }: Props) {
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="家賃、食費 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
               required
             />
           </div>
@@ -64,7 +64,7 @@ export default function ExpenseModal({ expense, onSave, onClose }: Props) {
               <select
                 value={category}
                 onChange={e => setCategory(e.target.value as ExpenseCategory)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -94,7 +94,7 @@ export default function ExpenseModal({ expense, onSave, onClose }: Props) {
               onChange={e => setAmount(e.target.value)}
               placeholder="50000"
               min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
               required
             />
           </div>
@@ -106,7 +106,7 @@ export default function ExpenseModal({ expense, onSave, onClose }: Props) {
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="備考など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
           </div>
 

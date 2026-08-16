@@ -55,7 +55,7 @@ export default function SpendingModal({ record, defaultDate, onSave, onClose }: 
                 type="date"
                 value={date}
                 onChange={e => setDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <div>
@@ -63,7 +63,7 @@ export default function SpendingModal({ record, defaultDate, onSave, onClose }: 
               <select
                 value={category}
                 onChange={e => setCategory(e.target.value as ExpenseCategory)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -77,7 +77,7 @@ export default function SpendingModal({ record, defaultDate, onSave, onClose }: 
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="スーパー、コンビニ など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               required
               autoFocus
             />
@@ -91,7 +91,7 @@ export default function SpendingModal({ record, defaultDate, onSave, onClose }: 
               onChange={e => setAmount(e.target.value)}
               placeholder="1500"
               min={1}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               required
             />
           </div>
@@ -102,7 +102,7 @@ export default function SpendingModal({ record, defaultDate, onSave, onClose }: 
               type="text"
               value={note}
               onChange={e => setNote(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
