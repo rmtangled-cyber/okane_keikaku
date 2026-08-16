@@ -29,7 +29,14 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
       <div className="p-4">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-xs text-gray-400 mb-0.5">{profile.name}</div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs text-gray-400">{profile.name}</span>
+              {profile.activeFromYear && (
+                <span className="text-xs px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded-full">
+                  {profile.activeFromYear}年〜
+                </span>
+              )}
+            </div>
             <div className="text-2xl font-bold text-gray-900">¥{result.grossMonthly.toLocaleString()}</div>
             <div className="text-xs text-gray-500 mt-0.5">{profile.prefecture} · {profile.age}歳 · 扶養{profile.dependents}人</div>
           </div>

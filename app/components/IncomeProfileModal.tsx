@@ -17,6 +17,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   const [prefecture, setPrefecture] = useState("東京");
   const [age, setAge] = useState("30");
   const [dependents, setDependents] = useState("0");
+  const [activeFromYear, setActiveFromYear] = useState("");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
       setPrefecture(profile.prefecture);
       setAge(String(profile.age));
       setDependents(String(profile.dependents));
+      setActiveFromYear(profile.activeFromYear ? String(profile.activeFromYear) : "");
       setNote(profile.note ?? "");
     }
   }, [profile]);
@@ -38,7 +40,8 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name || gross <= 0) return;
-    onSave({ name, grossMonthly: gross, prefecture, age: ageNum, dependents: depsNum, note: note || undefined });
+    const fromYear = activeFromYear ? parseInt(activeFromYear) : undefined;
+    onSave({ name, grossMonthly: gross, prefecture, age: ageNum, dependents: depsNum, activeFromYear: fromYear, note: note || undefined });
   }
 
   return (
@@ -135,6 +138,22 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              適用開始年（任意）
+              <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進などの年を入れると年齢別に反映</span>
+            </label>
+            <input
+              type="number"
+              value={activeFromYear}
+              onChange={e => setActiveFromYear(e.target.value)}
+              placeholder={`例: ${new Date().getFullYear() + 5}`}
+              min={2020}
+              max={2100}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">メモ（任意）</label>

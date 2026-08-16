@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { getUid } from "./uid";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -42,6 +42,8 @@ const KEYS = {
   incomeProfiles: "okane_incomeProfiles",
   lifeEvents: "okane_lifeEvents",
   insurancePlans: "okane_insurancePlans",
+  spendingRecords: "okane_spending",
+  loanPlans: "okane_loans",
 } as const;
 
 type StoreKey = keyof typeof KEYS;
@@ -176,6 +178,34 @@ export async function loadInsurancePlans(): Promise<InsurancePlan[]> {
     if (items.length > 0) { localSet("insurancePlans", items); return items; }
   } catch { /* offline fallback */ }
   return getInsurancePlans();
+}
+
+// Spending Records
+export function getSpendingRecords(): SpendingRecord[] { return localGet("spendingRecords") ?? []; }
+export function saveSpendingRecords(items: SpendingRecord[]): void {
+  localSet("spendingRecords", items);
+  fsSaveAll("spendingRecords", items).catch(console.error);
+}
+export async function loadSpendingRecords(): Promise<SpendingRecord[]> {
+  try {
+    const items = await fsGetAll<SpendingRecord>("spendingRecords");
+    if (items.length > 0) { localSet("spendingRecords", items); return items; }
+  } catch { /* offline fallback */ }
+  return getSpendingRecords();
+}
+
+// Loan Plans
+export function getLoanPlans(): LoanPlan[] { return localGet("loanPlans") ?? []; }
+export function saveLoanPlans(items: LoanPlan[]): void {
+  localSet("loanPlans", items);
+  fsSaveAll("loanPlans", items).catch(console.error);
+}
+export async function loadLoanPlans(): Promise<LoanPlan[]> {
+  try {
+    const items = await fsGetAll<LoanPlan>("loanPlans");
+    if (items.length > 0) { localSet("loanPlans", items); return items; }
+  } catch { /* offline fallback */ }
+  return getLoanPlans();
 }
 
 // Life Events

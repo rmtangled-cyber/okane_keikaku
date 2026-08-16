@@ -112,11 +112,39 @@ export interface MonthlyExpense {
 // 収入プロファイル（給与）
 export interface IncomeProfile {
   id: string;
-  name: string;          // ラベル（例: "現職"）
-  grossMonthly: number;  // 額面月収（円）
-  prefecture: string;    // 都道府県（協会けんぽ保険料率用）
+  name: string;           // ラベル（例: "現職"）
+  grossMonthly: number;   // 額面月収（円）
+  prefecture: string;     // 都道府県（協会けんぽ保険料率用）
   age: number;
-  dependents: number;    // 扶養家族数
+  dependents: number;     // 扶養家族数
+  activeFromYear?: number; // 適用開始年（省略=現在から適用）
+  note?: string;
+  updatedAt: string;
+}
+
+// 支出記録（家計簿）
+export interface SpendingRecord {
+  id: string;
+  date: string;    // "YYYY-MM-DD"
+  category: ExpenseCategory;
+  name: string;    // 店名・内容
+  amount: number;
+  note?: string;
+  createdAt: string;
+}
+
+// ローン
+export type LoanType = "元利均等" | "元金均等";
+export const LOAN_TYPES: LoanType[] = ["元利均等", "元金均等"];
+
+export interface LoanPlan {
+  id: string;
+  name: string;        // 住宅ローン、カーローン など
+  principal: number;   // 借入元本（円）
+  annualRate: number;  // 年利（%）
+  termMonths: number;  // 返済期間（月）
+  startDate: string;   // "YYYY-MM"
+  loanType: LoanType;
   note?: string;
   updatedAt: string;
 }
