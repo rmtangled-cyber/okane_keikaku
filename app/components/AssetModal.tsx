@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Asset, AssetCategory } from "@/lib/types";
 import { X } from "lucide-react";
 
-const CATEGORIES: AssetCategory[] = ["現金・預金", "株式", "投資信託", "債券", "不動産", "その他"];
+const CATEGORIES: AssetCategory[] = ["現金・預金", "債券", "不動産", "暗号資産", "その他"];
 
 interface Props {
   asset?: Asset | null;
@@ -51,7 +51,7 @@ export default function AssetModal({ asset, onSave, onClose }: Props) {
             <select
               value={category}
               onChange={e => setCategory(e.target.value as AssetCategory)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -63,7 +63,7 @@ export default function AssetModal({ asset, onSave, onClose }: Props) {
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="例: 三菱UFJ銀行 普通預金"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -75,7 +75,7 @@ export default function AssetModal({ asset, onSave, onClose }: Props) {
               onChange={e => setAmount(e.target.value)}
               placeholder="1000000"
               min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -86,7 +86,7 @@ export default function AssetModal({ asset, onSave, onClose }: Props) {
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="備考など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex gap-3 mt-2">

@@ -63,7 +63,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="現職、副業 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               required
             />
           </div>
@@ -76,7 +76,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               onChange={e => setGrossMonthly(e.target.value)}
               placeholder="350000"
               min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               required
             />
           </div>
@@ -100,7 +100,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
                 onChange={e => setAge(e.target.value)}
                 min={18}
                 max={80}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
             <div>
@@ -111,7 +111,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
                 onChange={e => setDependents(e.target.value)}
                 min={0}
                 max={10}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
           </div>
@@ -151,7 +151,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               placeholder={`例: ${new Date().getFullYear() + 5}`}
               min={2020}
               max={2100}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
 
@@ -162,7 +162,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="備考など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
 

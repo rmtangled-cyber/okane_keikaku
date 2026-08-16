@@ -85,7 +85,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -98,7 +98,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
               onChange={e => setPrincipal(e.target.value)}
               placeholder="30000000"
               min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -114,7 +114,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
                 min={0}
                 max={50}
                 step="0.01"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -126,7 +126,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
                 placeholder="35"
                 min={1}
                 max={50}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -138,7 +138,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
                 type="month"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -187,7 +187,7 @@ export default function LoanModal({ loan, onSave, onClose }: Props) {
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="銀行名、ローン番号 など"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
