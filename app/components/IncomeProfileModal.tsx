@@ -12,11 +12,11 @@ interface Props {
 }
 
 export default function IncomeProfileModal({ profile, onSave, onClose }: Props) {
-  const [name, setName] = useState("現職");
+  const [name, setName] = useState("");
   const [grossMonthly, setGrossMonthly] = useState("");
   const [prefecture, setPrefecture] = useState("東京");
-  const [age, setAge] = useState("30");
-  const [dependents, setDependents] = useState("0");
+  const [age, setAge] = useState("");
+  const [dependents, setDependents] = useState("");
   const [activeFromYear, setActiveFromYear] = useState("");
   const [note, setNote] = useState("");
 
@@ -62,7 +62,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="現職、副業 など"
+              placeholder="例: 現職、副業"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               required
             />
@@ -98,6 +98,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
                 type="number"
                 value={age}
                 onChange={e => setAge(e.target.value)}
+                placeholder="30"
                 min={18}
                 max={80}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -109,6 +110,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
                 type="number"
                 value={dependents}
                 onChange={e => setDependents(e.target.value)}
+                placeholder="0"
                 min={0}
                 max={10}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
