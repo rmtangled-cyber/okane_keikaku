@@ -16,10 +16,10 @@ interface Props {
 
 export default function LifeEventModal({ event, onSave, onClose }: Props) {
   const [title, setTitle] = useState("");
-  const [year, setYear] = useState(String(new Date().getFullYear() + 5));
+  const [year, setYear] = useState("");
   const [type, setType] = useState<LifeEventType>("収入変化");
-  const [monthlyChange, setMonthlyChange] = useState("0");
-  const [oneTime, setOneTime] = useState("0");
+  const [monthlyChange, setMonthlyChange] = useState("");
+  const [oneTime, setOneTime] = useState("");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -77,6 +77,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
                 type="number"
                 value={year}
                 onChange={e => setYear(e.target.value)}
+                placeholder={String(new Date().getFullYear() + 5)}
                 min={2020}
                 max={2100}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"

@@ -14,10 +14,10 @@ interface Props {
 const LOAN_PRESETS = ["住宅ローン", "カーローン", "教育ローン", "フリーローン", "その他"];
 
 export default function LoanModal({ loan, onSave, onClose }: Props) {
-  const [name, setName] = useState("住宅ローン");
+  const [name, setName] = useState("");
   const [principal, setPrincipal] = useState("");
-  const [annualRate, setAnnualRate] = useState("1.5");
-  const [termYears, setTermYears] = useState("35");
+  const [annualRate, setAnnualRate] = useState("");
+  const [termYears, setTermYears] = useState("");
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;

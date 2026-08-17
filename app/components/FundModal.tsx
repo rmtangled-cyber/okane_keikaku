@@ -19,8 +19,8 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
   const [accountType, setAccountType] = useState<AccountType>("NISA（つみたて投資枠）");
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [currentValue, setCurrentValue] = useState("");
-  const [expectedReturn, setExpectedReturn] = useState("7");
-  const [monthlyContrib, setMonthlyContrib] = useState("0");
+  const [expectedReturn, setExpectedReturn] = useState("");
+  const [monthlyContrib, setMonthlyContrib] = useState("");
   const [startDate, setStartDate] = useState("");
   const [note, setNote] = useState("");
 

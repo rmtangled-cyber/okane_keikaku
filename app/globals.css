@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Prevent iOS Safari zoom on focus (requires font-size >= 16px) */
+/* and ensure input text is always clearly visible */
+input, select, textarea {
+  font-size: 16px !important;
+  color: #111827 !important;
+}
