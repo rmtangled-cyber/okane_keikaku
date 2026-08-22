@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import {
-  User, GoogleAuthProvider, signInWithPopup,
+  User, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
   signOut as fbSignOut, onAuthStateChanged,
 } from "firebase/auth";
 import { auth } from "./firebase";
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    getRedirectResult(auth).catch(() => {});
     return onAuthStateChanged(auth, (u) => {
       setAuthUid(u?.uid ?? null);
       setUser(u);
@@ -31,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   };
 
   const signOut = async () => {

@@ -33,8 +33,8 @@ interface YearPoint {
 }
 
 export default function SolarCalc() {
-  // Solar gen (editable)
-  const [monthlyGenInput, setMonthlyGenInput] = useState(String(DEFAULT_MONTHLY_GEN));
+  // System capacity (editable) → monthly gen derived
+  const [systemKwpInput, setSystemKwpInput] = useState(String(SYSTEM_KWP));
   const [editingGen, setEditingGen] = useState(false);
 
   // Purchase / subsidy
@@ -59,7 +59,8 @@ export default function SolarCalc() {
   const [acNightHours, setAcNightHours] = useState("4");
 
   // Derived values
-  const monthlyGen = Math.max(1, parseInt(monthlyGenInput) || DEFAULT_MONTHLY_GEN);
+  const systemKwp = Math.max(0.1, parseFloat(systemKwpInput) || SYSTEM_KWP);
+  const monthlyGen = Math.round(systemKwp * 1380 * 0.85 / 12);
   const annualGenDisplay = Math.round(monthlyGen * 12);
 
   const purchase = parseFloat(purchaseCost) || 1320000;
@@ -155,19 +156,32 @@ export default function SolarCalc() {
             <Sun size={28} className="shrink-0 mt-0.5" />
             <div>
               <h2 className="font-bold text-lg leading-tight">太陽光パネル比較シミュレーター</h2>
-              <p className="text-amber-100 text-sm mt-0.5">Panasonic VBM470KJ02N × {PANEL_COUNT}枚 / {SYSTEM_KWP}kWp</p>
+              <p className="text-amber-100 text-sm mt-0.5">Panasonic VBM470KJ02N × {PANEL_COUNT}枚 / {systemKwp}kWp</p>
             </div>
           </div>
           <button onClick={() => setEditingGen(v => !v)}
             className="text-xs text-amber-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors shrink-0">
-            <Edit2 size={11} />{editingGen ? "完了" : "発電量を編集"}
+            <Edit2 size={11} />{editingGen ? "完了" : "容量を編集"}
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mt-4 text-center">
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">発電容量</div>
-            <div className="font-bold text-lg">{SYSTEM_KWP}kWp</div>
+            {editingGen ? (
+              <div className="flex items-center justify-center gap-1">
+                <input
+                  type="number"
+                  value={systemKwpInput}
+                  onChange={e => setSystemKwpInput(e.target.value)}
+                  step={0.01}
+                  className="w-16 bg-white/30 rounded-lg px-2 py-1 text-white font-bold text-base text-center focus:outline-none focus:ring-1 focus:ring-white/60"
+                />
+                <span className="text-sm font-semibold">kWp</span>
+              </div>
+            ) : (
+              <div className="font-bold text-lg">{systemKwp}kWp</div>
+            )}
           </div>
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">年間発電量目安</div>
@@ -175,19 +189,10 @@ export default function SolarCalc() {
           </div>
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">月間発電量目安</div>
-            {editingGen ? (
-              <input
-                type="number"
-                value={monthlyGenInput}
-                onChange={e => setMonthlyGenInput(e.target.value)}
-                className="w-full bg-white/30 rounded-lg px-2 py-1 text-white font-bold text-base text-center focus:outline-none focus:ring-1 focus:ring-white/60"
-              />
-            ) : (
-              <div className="font-bold text-lg">{monthlyGen}kWh</div>
-            )}
+            <div className="font-bold text-lg">{monthlyGen}kWh</div>
           </div>
         </div>
-        <p className="text-xs text-amber-200 mt-2">※ 東京都・NEDO日射量データ・システム効率85%による試算（月間発電量は編集可能）</p>
+        <p className="text-xs text-amber-200 mt-2">※ 東京都・NEDO日射量データ・システム効率85%による試算（発電容量は編集可能）</p>
       </div>
 
       {/* Input section */}
