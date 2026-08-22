@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
-import { Sun, Zap, TrendingUp, Info } from "lucide-react";
+import { Sun, Zap, TrendingUp, Info, Wind, Edit2 } from "lucide-react";
 
 // VBM470KJ02N × 12枚
 const PANEL_COUNT = 12;
@@ -13,11 +13,18 @@ const PANEL_WATT = 470;
 const SYSTEM_KWP = (PANEL_COUNT * PANEL_WATT) / 1000; // 5.64 kWp
 
 // Tokyo NEDO annual irradiance ~1,380 kWh/kWp, system efficiency 0.85
-const ANNUAL_GENERATION_KWH = Math.round(SYSTEM_KWP * 1380 * 0.85);
-const MONTHLY_GENERATION_KWH = Math.round(ANNUAL_GENERATION_KWH / 12);
+const DEFAULT_MONTHLY_GEN = Math.round(SYSTEM_KWP * 1380 * 0.85 / 12); // ~551 kWh
 
 // Daytime fraction of generation (panels generate only when sun is out)
 const DAYTIME_GEN_FRACTION = 0.80;
+
+// AC type presets (average running power in kW)
+const AC_TYPES = [
+  { label: "小型（〜6畳）",  kw: 0.5 },
+  { label: "標準（6〜10畳）", kw: 0.8 },
+  { label: "大型（10〜18畳）", kw: 1.2 },
+  { label: "超大型（18畳〜）", kw: 1.8 },
+];
 
 interface YearPoint {
   year: number;
@@ -26,14 +33,34 @@ interface YearPoint {
 }
 
 export default function SolarCalc() {
+  // Solar gen (editable)
+  const [monthlyGenInput, setMonthlyGenInput] = useState(String(DEFAULT_MONTHLY_GEN));
+  const [editingGen, setEditingGen] = useState(false);
+
+  // Purchase / subsidy
   const [purchaseCost, setPurchaseCost] = useState("1320000");
   const [subsidyAmount, setSubsidyAmount] = useState("625000");
+
+  // Electricity usage
   const [daytimeUsage, setDaytimeUsage] = useState("");
   const [nighttimeUsage, setNighttimeUsage] = useState("");
   const [electricityRate, setElectricityRate] = useState("32");
   const [fitRate, setFitRate] = useState("16");
+
+  // エネカリプラス
   const [enecariMonthly, setEnecariMonthly] = useState("");
   const [enecariYears, setEnecariYears] = useState("10");
+
+  // AC estimator
+  const [showAcEstimator, setShowAcEstimator] = useState(false);
+  const [acTypeIdx, setAcTypeIdx] = useState(1); // 標準
+  const [acCount, setAcCount] = useState("2");
+  const [acDayHours, setAcDayHours] = useState("8");
+  const [acNightHours, setAcNightHours] = useState("4");
+
+  // Derived values
+  const monthlyGen = Math.max(1, parseInt(monthlyGenInput) || DEFAULT_MONTHLY_GEN);
+  const annualGenDisplay = Math.round(monthlyGen * 12);
 
   const purchase = parseFloat(purchaseCost) || 1320000;
   const subsidy = parseFloat(subsidyAmount) || 0;
@@ -45,8 +72,20 @@ export default function SolarCalc() {
   const enecariMon = parseFloat(enecariMonthly) || 0;
   const enecariContractYears = parseInt(enecariYears) || 10;
 
+  // AC estimate
+  const acKw = AC_TYPES[acTypeIdx].kw;
+  const acN = Math.max(1, parseInt(acCount) || 1);
+  const acDay = Math.max(0, parseFloat(acDayHours) || 0);
+  const acNight = Math.max(0, parseFloat(acNightHours) || 0);
+  const acEstDay = Math.round(acKw * acN * acDay * 30);
+  const acEstNight = Math.round(acKw * acN * acNight * 30);
+
+  const applyAcEstimate = () => {
+    setDaytimeUsage(String(acEstDay));
+    setNighttimeUsage(String(acEstNight));
+  };
+
   const result = useMemo(() => {
-    const monthlyGen = MONTHLY_GENERATION_KWH;
     const daytimeGen = monthlyGen * DAYTIME_GEN_FRACTION;
 
     // Self-consumed: limited by daytime usage or daytime generation, whichever smaller
@@ -54,21 +93,15 @@ export default function SolarCalc() {
     // Surplus exported to grid
     const exported = monthlyGen - selfConsumed;
 
-    // Monthly savings from solar ownership
     const selfSaving = selfConsumed * rate;
     const fitRevenue = exported * fit;
-    // Purchase: self-consumption saving + FIT sell-back revenue
     const monthlySavingPurchase = selfSaving + fitRevenue;
 
-    // エネカリプラス: during contract, surplus electricity goes to TEPCO (no FIT revenue for user)
-    // User only benefits from self-consumption, and pays monthly fee
+    // エネカリプラス: no FIT during contract
     const enecariSelfSaving = selfConsumed * rate;
     const enecariDuringContract = enecariSelfSaving - enecariMon;
-
-    // After contract ends: panels owned, full savings = same as purchase
     const monthlySavingAfterContract = monthlySavingPurchase;
 
-    // Payback period for purchase
     const paybackMonths = monthlySavingPurchase > 0 ? netPurchase / monthlySavingPurchase : Infinity;
     const paybackYears = paybackMonths / 12;
 
@@ -82,18 +115,12 @@ export default function SolarCalc() {
         if (y <= enecariContractYears) {
           enecariCum += enecariDuringContract * 12;
         } else {
-          // After contract: panels owned, no monthly fee, full savings
           enecariCum += monthlySavingAfterContract * 12;
         }
       }
-      chartData.push({
-        year: y,
-        purchase: Math.round(purchaseCum),
-        enecari: Math.round(enecariCum),
-      });
+      chartData.push({ year: y, purchase: Math.round(purchaseCum), enecari: Math.round(enecariCum) });
     }
 
-    // Find crossover year (when purchase becomes better than enecari)
     let crossoverYear: number | null = null;
     for (let i = 0; i < chartData.length - 1; i++) {
       if (chartData[i].purchase <= chartData[i].enecari && chartData[i + 1].purchase > chartData[i + 1].enecari) {
@@ -103,7 +130,6 @@ export default function SolarCalc() {
     }
 
     return {
-      monthlyGen,
       selfConsumed: Math.round(selfConsumed),
       exported: Math.round(exported),
       selfSaving: Math.round(selfSaving),
@@ -116,7 +142,7 @@ export default function SolarCalc() {
       crossoverYear,
       netPurchase,
     };
-  }, [dayKwh, nightKwh, rate, fit, enecariMon, netPurchase, enecariContractYears]);
+  }, [monthlyGen, dayKwh, nightKwh, rate, fit, enecariMon, netPurchase, enecariContractYears]);
 
   const fmtY = (v: number) => v >= 100_0000 ? `${(v / 100_0000).toFixed(0)}万` : `${(v / 1000).toFixed(0)}k`;
 
@@ -124,13 +150,20 @@ export default function SolarCalc() {
     <div className="space-y-5">
       {/* Panel info banner */}
       <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-md">
-        <div className="flex items-start gap-3">
-          <Sun size={28} className="shrink-0 mt-0.5" />
-          <div>
-            <h2 className="font-bold text-lg leading-tight">太陽光パネル比較シミュレーター</h2>
-            <p className="text-amber-100 text-sm mt-0.5">Panasonic VBM470KJ02N × {PANEL_COUNT}枚 / {SYSTEM_KWP}kWp</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Sun size={28} className="shrink-0 mt-0.5" />
+            <div>
+              <h2 className="font-bold text-lg leading-tight">太陽光パネル比較シミュレーター</h2>
+              <p className="text-amber-100 text-sm mt-0.5">Panasonic VBM470KJ02N × {PANEL_COUNT}枚 / {SYSTEM_KWP}kWp</p>
+            </div>
           </div>
+          <button onClick={() => setEditingGen(v => !v)}
+            className="text-xs text-amber-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors shrink-0">
+            <Edit2 size={11} />{editingGen ? "完了" : "発電量を編集"}
+          </button>
         </div>
+
         <div className="grid grid-cols-3 gap-3 mt-4 text-center">
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">発電容量</div>
@@ -138,14 +171,23 @@ export default function SolarCalc() {
           </div>
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">年間発電量目安</div>
-            <div className="font-bold text-lg">{ANNUAL_GENERATION_KWH.toLocaleString()}kWh</div>
+            <div className="font-bold text-lg">{annualGenDisplay.toLocaleString()}kWh</div>
           </div>
           <div className="bg-white/20 rounded-xl p-3">
             <div className="text-xs text-amber-100">月間発電量目安</div>
-            <div className="font-bold text-lg">{MONTHLY_GENERATION_KWH}kWh</div>
+            {editingGen ? (
+              <input
+                type="number"
+                value={monthlyGenInput}
+                onChange={e => setMonthlyGenInput(e.target.value)}
+                className="w-full bg-white/30 rounded-lg px-2 py-1 text-white font-bold text-base text-center focus:outline-none focus:ring-1 focus:ring-white/60"
+              />
+            ) : (
+              <div className="font-bold text-lg">{monthlyGen}kWh</div>
+            )}
           </div>
         </div>
-        <p className="text-xs text-amber-200 mt-2">※ 東京都・NEDO日射量データ・システム効率85%による試算</p>
+        <p className="text-xs text-amber-200 mt-2">※ 東京都・NEDO日射量データ・システム効率85%による試算（月間発電量は編集可能）</p>
       </div>
 
       {/* Input section */}
@@ -177,17 +219,69 @@ export default function SolarCalc() {
 
         {/* Electricity usage */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-            <Zap size={15} className="text-yellow-500" /> 電力使用量（月間）
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+              <Zap size={15} className="text-yellow-500" /> 電力使用量（月間）
+            </h3>
+            <button onClick={() => setShowAcEstimator(v => !v)}
+              className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 rounded-lg px-2.5 py-1 flex items-center gap-1 transition-colors">
+              <Wind size={11} />エアコン目安
+            </button>
+          </div>
+
+          {/* AC estimator (collapsible) */}
+          {showAcEstimator && (
+            <div className="bg-indigo-50 rounded-xl p-3 space-y-3 border border-indigo-100">
+              <p className="text-xs font-medium text-indigo-700">エアコン使用量の目安</p>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">機種タイプ</label>
+                <select value={acTypeIdx} onChange={e => setAcTypeIdx(Number(e.target.value))}
+                  className="w-full border border-indigo-200 bg-white rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {AC_TYPES.map((t, i) => (
+                    <option key={i} value={i}>{t.label}（{t.kw}kW）</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">台数</label>
+                  <input type="number" value={acCount} onChange={e => setAcCount(e.target.value)} min={1} max={10}
+                    className="w-full border border-indigo-200 bg-white rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">昼間 h/日</label>
+                  <input type="number" value={acDayHours} onChange={e => setAcDayHours(e.target.value)} min={0} max={12} step={0.5}
+                    className="w-full border border-indigo-200 bg-white rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">夜間 h/日</label>
+                  <input type="number" value={acNightHours} onChange={e => setAcNightHours(e.target.value)} min={0} max={12} step={0.5}
+                    className="w-full border border-indigo-200 bg-white rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-indigo-100">
+                <span className="text-xs text-gray-600">
+                  昼 <span className="font-bold text-gray-800">{acEstDay}</span> kWh
+                  ／夜 <span className="font-bold text-gray-800">{acEstNight}</span> kWh
+                  <span className="text-gray-400 ml-1">（月間）</span>
+                </span>
+                <button onClick={applyAcEstimate}
+                  className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700 transition-colors">
+                  反映
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">昼間 = 6〜18時、夜間 = 18〜6時。エアコン以外の家電も含めて調整してください。</p>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">昼間使用量（kWh）</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">昼間使用量（kWh/月）</label>
             <input type="number" value={daytimeUsage} onChange={e => setDaytimeUsage(e.target.value)} placeholder="150"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-400" />
             <p className="text-xs text-gray-400 mt-1">日中（6〜18時）の使用量</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">夜間使用量（kWh）</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">夜間使用量（kWh/月）</label>
             <input type="number" value={nighttimeUsage} onChange={e => setNighttimeUsage(e.target.value)} placeholder="100"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-400" />
             <p className="text-xs text-gray-400 mt-1">夜間（18〜6時）の使用量（常に買電）</p>
@@ -247,7 +341,7 @@ export default function SolarCalc() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-gray-600">
                   <span>月間発電量</span>
-                  <span className="font-medium text-gray-800">{result.monthlyGen} kWh</span>
+                  <span className="font-medium text-gray-800">{monthlyGen} kWh</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>自家消費</span>
@@ -375,6 +469,7 @@ export default function SolarCalc() {
         <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400">
           <Sun size={32} className="mx-auto mb-3 text-gray-200" />
           <p className="text-sm">昼間・夜間の電力使用量とエネカリプラスの月額を入力すると比較結果が表示されます</p>
+          <p className="text-xs mt-1 text-gray-300">「エアコン目安」ボタンで使用量の目安を入力できます</p>
         </div>
       )}
     </div>
