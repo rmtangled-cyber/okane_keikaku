@@ -222,6 +222,34 @@ export async function loadLifeEvents(): Promise<LifeEvent[]> {
   return getLifeEvents();
 }
 
+// ── Migration: copy all data from an old anon UID to the current UID ─────────
+const COLLECTION_NAMES = [
+  "assets", "stocks", "funds", "goals", "snapshots", "expenses",
+  "incomeProfiles", "lifeEvents", "insurancePlans", "spendingRecords", "loanPlans",
+] as const;
+
+export async function migrateFromUid(oldUid: string): Promise<void> {
+  const currentUid = getUid();
+  if (!oldUid || oldUid === currentUid) return;
+  for (const name of COLLECTION_NAMES) {
+    const oldCol = collection(db, "users", oldUid, name);
+    const snap = await getDocs(oldCol);
+    if (snap.docs.length === 0) continue;
+    const items = snap.docs.map(d => d.data());
+    // Write to current UID's collection
+    const newCol = collection(db, "users", currentUid, name);
+    const batch = writeBatch(db);
+    const existing = await getDocs(newCol);
+    existing.docs.forEach(d => batch.delete(d.ref));
+    items.forEach(item => {
+      const asAny = item as Record<string, unknown>;
+      const docId = (asAny.id ?? asAny.month ?? crypto.randomUUID()) as string;
+      batch.set(doc(newCol, docId), item);
+    });
+    await batch.commit();
+  }
+}
+
 // CSV export
 export function exportToCSV(assets: Asset[]): void {
   const header = ["カテゴリ", "資産名", "金額（円）", "メモ", "更新日時"];

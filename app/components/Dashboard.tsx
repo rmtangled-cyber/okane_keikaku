@@ -30,6 +30,7 @@ import {
   getInsurancePlans, saveInsurancePlans, loadInsurancePlans,
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
   getLoanPlans, saveLoanPlans, loadLoanPlans,
+  migrateFromUid,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
 import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear } from "@/lib/loanCalc";
@@ -159,6 +160,8 @@ function simulate(
 
 export default function Dashboard() {
   const { user, loading: authLoading, signIn, signOut } = useAuth();
+  const [migrateUid, setMigrateUid] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stocks, setStocks] = useState<StockHolding[]>([]);
   const [funds, setFunds] = useState<FundHolding[]>([]);
@@ -209,8 +212,38 @@ export default function Dashboard() {
     loadIncomeProfiles().then(setIncomeProfiles); loadLifeEvents().then(setLifeEvents);
     loadInsurancePlans().then(setInsurancePlans); loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
+    // Check for old anonymous UID that could be migrated
+    if (user) {
+      const anonUid = typeof window !== "undefined" ? localStorage.getItem("okane_uid") : null;
+      if (anonUid && anonUid !== user.uid) setMigrateUid(anonUid);
+      else setMigrateUid(null);
+    } else {
+      setMigrateUid(null);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
+
+  const handleMigrateData = useCallback(async () => {
+    if (!migrateUid) return;
+    setMigrating(true);
+    try {
+      await migrateFromUid(migrateUid);
+      localStorage.removeItem("okane_uid");
+      setMigrateUid(null);
+      const [a, s, f, g, sn, ex, ip, le, ins, sp, lp] = await Promise.all([
+        loadAssets(), loadStocks(), loadFunds(), loadGoals(), loadSnapshots(),
+        loadExpenses(), loadIncomeProfiles(), loadLifeEvents(), loadInsurancePlans(),
+        loadSpendingRecords(), loadLoanPlans(),
+      ]);
+      setAssets(a); setStocks(s); setFunds(f); setGoals(g); setSnapshots(sn);
+      setExpenses(ex); setIncomeProfiles(ip); setLifeEvents(le); setInsurancePlans(ins);
+      setSpendingRecords(sp); setLoanPlans(lp);
+    } catch (err) {
+      console.error("Migration failed:", err);
+    } finally {
+      setMigrating(false);
+    }
+  }, [migrateUid]);
 
   // ── Totals ────────────────────────────────────────────
   const stocksTotal = stocks.reduce((s, h) => s + h.currentPrice * h.shares, 0);
@@ -545,6 +578,26 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        {/* Migration banner */}
+        {migrateUid && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div className="text-sm text-amber-800">
+              <span className="font-semibold">このデバイスに別の保存データがあります。</span>
+              <span className="ml-1 text-amber-700">このデバイスのデータをGoogleアカウントに上書きしますか？</span>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => { localStorage.removeItem("okane_uid"); setMigrateUid(null); }}
+                className="text-xs px-3 py-1.5 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors">
+                スキップ
+              </button>
+              <button onClick={handleMigrateData} disabled={migrating}
+                className="text-xs px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-60 transition-colors">
+                {migrating ? "移行中…" : "このデバイスのデータを使う"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Total Banner */}
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
           <p className="text-sm text-blue-200 mb-1">総資産</p>
