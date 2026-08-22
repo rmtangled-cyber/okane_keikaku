@@ -57,29 +57,33 @@ export default function SolarCalc() {
     // Monthly savings from solar ownership
     const selfSaving = selfConsumed * rate;
     const fitRevenue = exported * fit;
-    const monthlySaving = selfSaving + fitRevenue;
+    // Purchase: self-consumption saving + FIT sell-back revenue
+    const monthlySavingPurchase = selfSaving + fitRevenue;
 
-    // Payback period for purchase (months)
-    const paybackMonths = monthlySaving > 0 ? netPurchase / monthlySaving : Infinity;
+    // エネカリプラス: during contract, surplus electricity goes to TEPCO (no FIT revenue for user)
+    // User only benefits from self-consumption, and pays monthly fee
+    const enecariSelfSaving = selfConsumed * rate;
+    const enecariDuringContract = enecariSelfSaving - enecariMon;
+
+    // After contract ends: panels owned, full savings = same as purchase
+    const monthlySavingAfterContract = monthlySavingPurchase;
+
+    // Payback period for purchase
+    const paybackMonths = monthlySavingPurchase > 0 ? netPurchase / monthlySavingPurchase : Infinity;
     const paybackYears = paybackMonths / 12;
 
-    // Monthly net for purchase: savings (no fee)
-    // Monthly net for enecari: same electricity savings MINUS monthly fee
-    const enecariMonthlySaving = monthlySaving - enecariMon;
-
-    // After enecari contract ends, assume panels transfer for free → same as purchase from year N
     const chartData: YearPoint[] = [];
     let purchaseCum = -netPurchase;
     let enecariCum = 0;
 
     for (let y = 0; y <= 25; y++) {
       if (y > 0) {
-        purchaseCum += monthlySaving * 12;
+        purchaseCum += monthlySavingPurchase * 12;
         if (y <= enecariContractYears) {
-          enecariCum += enecariMonthlySaving * 12;
+          enecariCum += enecariDuringContract * 12;
         } else {
-          // After contract, panels are owned → same saving as purchase (no more fee)
-          enecariCum += monthlySaving * 12;
+          // After contract: panels owned, no monthly fee, full savings
+          enecariCum += monthlySavingAfterContract * 12;
         }
       }
       chartData.push({
@@ -89,7 +93,7 @@ export default function SolarCalc() {
       });
     }
 
-    // Find crossover year (when purchase becomes better)
+    // Find crossover year (when purchase becomes better than enecari)
     let crossoverYear: number | null = null;
     for (let i = 0; i < chartData.length - 1; i++) {
       if (chartData[i].purchase <= chartData[i].enecari && chartData[i + 1].purchase > chartData[i + 1].enecari) {
@@ -104,8 +108,9 @@ export default function SolarCalc() {
       exported: Math.round(exported),
       selfSaving: Math.round(selfSaving),
       fitRevenue: Math.round(fitRevenue),
-      monthlySaving: Math.round(monthlySaving),
-      enecariMonthlySaving: Math.round(enecariMonthlySaving),
+      monthlySavingPurchase: Math.round(monthlySavingPurchase),
+      enecariSelfSaving: Math.round(enecariSelfSaving),
+      enecariDuringContract: Math.round(enecariDuringContract),
       paybackYears,
       chartData,
       crossoverYear,
@@ -225,8 +230,8 @@ export default function SolarCalc() {
         <div className="flex items-start gap-2 mt-3 bg-blue-50 rounded-xl p-3">
           <Info size={13} className="text-blue-500 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700">
-            エネカリプラスでも自家消費・売電の電気代節約効果は同じです。月額費用を払う代わりに初期費用ゼロで設置できます。
-            契約終了後はパネルが自分のものになり、その後は購入と同等の節約効果になると想定しています。
+            <span className="font-semibold">契約期間中</span>：余剰電力はTEPCOが利用（売電収入なし）。自家消費分のみ節約効果あり。月額費用が発生。<br/>
+            <span className="font-semibold">契約終了後（10年 or 15年）</span>：パネルが無償譲渡され月額ゼロに。以降は購入と同等の節約（自家消費＋売電）が得られる。
           </p>
         </div>
       </div>
@@ -236,8 +241,9 @@ export default function SolarCalc() {
         <>
           {/* Monthly breakdown */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Purchase breakdown */}
             <div className="bg-orange-50 rounded-2xl p-5 border border-orange-100">
-              <h4 className="text-sm font-semibold text-orange-800 mb-3">月間節約効果</h4>
+              <h4 className="text-sm font-semibold text-orange-800 mb-3">購入した場合の月間節約</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-gray-600">
                   <span>月間発電量</span>
@@ -248,7 +254,7 @@ export default function SolarCalc() {
                   <span className="font-medium text-gray-800">{result.selfConsumed} kWh</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>売電量</span>
+                  <span>売電量（FIT）</span>
                   <span className="font-medium text-gray-800">{result.exported} kWh</span>
                 </div>
                 <div className="border-t border-orange-200 pt-2 space-y-1.5">
@@ -263,50 +269,69 @@ export default function SolarCalc() {
                 </div>
                 <div className="flex justify-between font-bold text-orange-700 pt-1 border-t border-orange-200">
                   <span>月間合計節約</span>
-                  <span>¥{result.monthlySaving.toLocaleString()}</span>
+                  <span>¥{result.monthlySavingPurchase.toLocaleString()}</span>
                 </div>
-                <div className="text-xs text-gray-400">年間: ¥{(result.monthlySaving * 12).toLocaleString()}</div>
+                <div className="text-xs text-gray-400">
+                  {result.paybackYears === Infinity
+                    ? "節約額なし（電力使用量を入力）"
+                    : `回収期間: 約${result.paybackYears.toFixed(1)}年（実質負担 ¥${result.netPurchase.toLocaleString()}）`}
+                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-              <h4 className="text-sm font-semibold text-gray-800 mb-3">比較サマリー</h4>
-              <div className="space-y-3 text-sm">
-                <div className="bg-orange-50 rounded-xl p-3">
-                  <div className="text-xs text-orange-600 font-medium mb-1">購入（実質 ¥{result.netPurchase.toLocaleString()}）</div>
-                  <div className="flex justify-between text-gray-700">
-                    <span>月間節約</span>
-                    <span className="font-bold text-orange-700">¥{result.monthlySaving.toLocaleString()}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {result.paybackYears === Infinity
-                      ? "節約額なし（電力使用量を入力してください）"
-                      : `回収期間: 約${result.paybackYears.toFixed(1)}年`}
-                  </div>
+            {/* エネカリプラス breakdown */}
+            <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100">
+              <h4 className="text-sm font-semibold text-blue-800 mb-3">エネカリプラスの月間収支</h4>
+              <div className="space-y-2 text-sm">
+                <div className="text-xs text-blue-600 font-medium mb-1">契約期間中（〜{enecariContractYears}年後）</div>
+                <div className="flex justify-between text-gray-600">
+                  <span>自家消費節約</span>
+                  <span className="text-green-700">+¥{result.enecariSelfSaving.toLocaleString()}</span>
                 </div>
-                <div className="bg-blue-50 rounded-xl p-3">
-                  <div className="text-xs text-blue-600 font-medium mb-1">エネカリプラス（¥{enecariMon.toLocaleString()}/月）</div>
-                  <div className="flex justify-between text-gray-700">
-                    <span>月間純節約</span>
-                    <span className={`font-bold ${result.enecariMonthlySaving >= 0 ? "text-blue-700" : "text-red-600"}`}>
-                      {result.enecariMonthlySaving >= 0 ? "+" : ""}¥{result.enecariMonthlySaving.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    契約{enecariContractYears}年間合計: ¥{(result.enecariMonthlySaving * 12 * enecariContractYears).toLocaleString()}
-                  </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>売電収入</span>
+                  <span className="text-gray-400">なし（TEPCOへ）</span>
                 </div>
-                {result.crossoverYear !== null && (
-                  <div className="bg-green-50 rounded-xl p-3 text-xs text-green-700">
-                    <span className="font-medium">購入が{result.crossoverYear}年目以降お得</span>になります
-                    （エネカリプラス月額 ¥{enecariMon.toLocaleString()} の場合）
-                  </div>
-                )}
-                {result.crossoverYear === null && enecariMon > 0 && dayKwh > 0 && (
-                  <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
-                    25年間でも購入がエネカリプラスより有利になりません。エネカリプラスがお得です。
-                  </div>
-                )}
+                <div className="flex justify-between text-gray-600">
+                  <span>月額利用料</span>
+                  <span className="text-red-600">−¥{enecariMon.toLocaleString()}</span>
+                </div>
+                <div className={`flex justify-between font-bold pt-1 border-t border-blue-200 ${result.enecariDuringContract >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                  <span>月間純収支</span>
+                  <span>{result.enecariDuringContract >= 0 ? "+" : ""}¥{result.enecariDuringContract.toLocaleString()}</span>
+                </div>
+                <div className="text-xs text-blue-600 font-medium mt-3 pt-2 border-t border-blue-200">
+                  {enecariContractYears}年後〜（無償譲渡後）
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>月額利用料</span>
+                  <span className="font-medium text-blue-700">¥0（終了）</span>
+                </div>
+                <div className="flex justify-between font-bold text-blue-700">
+                  <span>月間節約（購入と同等）</span>
+                  <span>¥{result.monthlySavingPurchase.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary verdict */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-3">判定</h4>
+            <div className="space-y-2 text-sm">
+              {result.crossoverYear !== null && (
+                <div className="bg-orange-50 rounded-xl p-3 text-orange-800">
+                  購入は初期費用 ¥{result.netPurchase.toLocaleString()} がかかりますが、
+                  <span className="font-bold"> {result.crossoverYear}年目以降は購入の方がお得</span>になります。
+                </div>
+              )}
+              {result.crossoverYear === null && enecariMon > 0 && dayKwh > 0 && (
+                <div className="bg-blue-50 rounded-xl p-3 text-blue-800">
+                  25年間でも購入がエネカリプラスを上回りません。<span className="font-bold">エネカリプラスの方がお得</span>です。
+                </div>
+              )}
+              <div className="text-xs text-gray-400 mt-1">
+                ※ エネカリプラス契約中は売電収入なし（余剰電力はTEPCOへ）。{enecariContractYears}年後の無償譲渡後は売電も可能になります。
               </div>
             </div>
           </div>
