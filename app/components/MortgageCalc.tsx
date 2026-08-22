@@ -7,10 +7,9 @@ import {
 } from "recharts";
 import { Building2, Info } from "lucide-react";
 
-const BANKS = [
-  { name: "足利銀行", rate: 0.975, color: "#3b82f6" },
-  { name: "千葉銀行", rate: 1.075, color: "#8b5cf6" },
-];
+const BANK_COLORS = ["#3b82f6", "#8b5cf6"] as const;
+
+interface BankSetting { name: string; rate: string }
 
 function calcPayment(principal: number, annualPct: number, months: number): number {
   if (months <= 0 || principal <= 0) return 0;
@@ -105,23 +104,36 @@ export default function MortgageCalc() {
   const [principalMan, setPrincipalMan] = useState("");
   const [termYears, setTermYears] = useState("35");
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [banks, setBanks] = useState<BankSetting[]>([
+    { name: "足利銀行", rate: "0.975" },
+    { name: "千葉銀行", rate: "1.075" },
+  ]);
+  const [editingBank, setEditingBank] = useState(false);
 
   const principal = (parseFloat(principalMan) || 0) * 10000;
   const termMonths = (parseInt(termYears) || 35) * 12;
   const scenario = SCENARIOS[selectedIdx];
 
+  const parsedBanks = banks.map((b, i) => ({
+    name: b.name || `銀行${i + 1}`,
+    rate: parseFloat(b.rate) || 0,
+    color: BANK_COLORS[i],
+  }));
+
   const allResults = useMemo(() => {
     if (!principal) return null;
     return SCENARIOS.map(sc => ({
       sc,
-      banks: BANKS.map(b => ({ bank: b, loan: calcLoan(principal, termMonths, b.rate, sc.hike5, sc.hike10) })),
+      banks: parsedBanks.map(b => ({ bank: b, loan: calcLoan(principal, termMonths, b.rate, sc.hike5, sc.hike10) })),
     }));
-  }, [principal, termMonths]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [principal, termMonths, banks]);
 
   const detail = useMemo(() => {
     if (!principal) return null;
-    return BANKS.map(b => ({ bank: b, loan: calcLoan(principal, termMonths, b.rate, scenario.hike5, scenario.hike10) }));
-  }, [principal, termMonths, scenario]);
+    return parsedBanks.map(b => ({ bank: b, loan: calcLoan(principal, termMonths, b.rate, scenario.hike5, scenario.hike10) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [principal, termMonths, scenario, banks]);
 
   // Merged chart data for selected scenario
   const chartData = useMemo(() => {
@@ -129,31 +141,64 @@ export default function MortgageCalc() {
     const len = detail[0].loan.chartPoints.length;
     return Array.from({ length: len }, (_, i) => ({
       year: detail[0].loan.chartPoints[i].year,
-      足利銀行: detail[0].loan.chartPoints[i].balance,
-      千葉銀行: detail[1].loan.chartPoints[i].balance,
+      [parsedBanks[0].name]: detail[0].loan.chartPoints[i].balance,
+      [parsedBanks[1].name]: detail[1].loan.chartPoints[i].balance,
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md">
-        <div className="flex items-start gap-3">
-          <Building2 size={26} className="shrink-0 mt-0.5" />
-          <div>
-            <h2 className="font-bold text-lg">住宅ローン比較シミュレーター</h2>
-            <p className="text-blue-200 text-sm mt-0.5">足利銀行 vs 千葉銀行 / 変動金利・金利上昇シナリオ</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          {BANKS.map(b => (
-            <div key={b.name} className="bg-white/20 rounded-xl p-3 text-center">
-              <div className="text-xs text-blue-200">{b.name}</div>
-              <div className="font-bold text-2xl">{b.rate}%</div>
-              <div className="text-xs text-blue-300">現在の変動金利</div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Building2 size={26} className="shrink-0 mt-0.5" />
+            <div>
+              <h2 className="font-bold text-lg">住宅ローン比較シミュレーター</h2>
+              <p className="text-blue-200 text-sm mt-0.5">変動金利・金利上昇シナリオ比較</p>
             </div>
-          ))}
+          </div>
+          <button onClick={() => setEditingBank(v => !v)}
+            className="text-xs text-blue-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 transition-colors shrink-0">
+            {editingBank ? "完了" : "銀行を編集"}
+          </button>
         </div>
+
+        {editingBank ? (
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            {banks.map((b, i) => (
+              <div key={i} className="bg-white/20 rounded-xl p-3 space-y-2">
+                <input
+                  type="text" value={b.name}
+                  onChange={e => setBanks(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                  placeholder={`銀行${i + 1}`}
+                  className="w-full bg-white/20 rounded-lg px-2 py-1 text-sm text-white placeholder-blue-300 focus:outline-none focus:ring-1 focus:ring-white/60"
+                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" value={b.rate} step="0.025"
+                    onChange={e => setBanks(prev => prev.map((x, j) => j === i ? { ...x, rate: e.target.value } : x))}
+                    placeholder="0.975"
+                    className="w-full bg-white/20 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-white/60"
+                  />
+                  <span className="text-white text-sm shrink-0">%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            {parsedBanks.map(b => (
+              <div key={b.name} className="bg-white/20 rounded-xl p-3 text-center">
+                <div className="text-xs text-blue-200">{b.name}</div>
+                <div className="font-bold text-2xl">{b.rate}%</div>
+                <div className="text-xs text-blue-300">現在の変動金利</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mt-3 flex items-center gap-1.5 text-xs text-blue-300">
           <Info size={11} />
           <span>金利優遇幅は維持と仮定 / 10月以降の上昇を複数シナリオで試算</span>
@@ -175,7 +220,7 @@ export default function MortgageCalc() {
             <label className="block text-xs font-medium text-gray-600 mb-1">返済期間</label>
             <select value={termYears} onChange={e => setTermYears(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
-              {[20, 25, 30, 35].map(y => <option key={y} value={y}>{y}年</option>)}
+              {[20, 25, 30, 35, 40, 45].map(y => <option key={y} value={y}>{y}年</option>)}
             </select>
           </div>
         </div>
@@ -195,13 +240,13 @@ export default function MortgageCalc() {
                   <tr>
                     <th className="px-4 py-2.5 text-left text-gray-500 font-medium whitespace-nowrap">金利シナリオ</th>
                     <th className="px-4 py-2.5 text-right text-blue-600 font-medium whitespace-nowrap">
-                      足利銀行 0.975%<br /><span className="text-gray-400 font-normal text-xs">総支払 / 利息</span>
+                      {parsedBanks[0].name} {parsedBanks[0].rate}%<br /><span className="text-gray-400 font-normal text-xs">総支払 / 利息</span>
                     </th>
                     <th className="px-4 py-2.5 text-right text-purple-600 font-medium whitespace-nowrap">
-                      千葉銀行 1.075%<br /><span className="text-gray-400 font-normal text-xs">総支払 / 利息</span>
+                      {parsedBanks[1].name} {parsedBanks[1].rate}%<br /><span className="text-gray-400 font-normal text-xs">総支払 / 利息</span>
                     </th>
                     <th className="px-4 py-2.5 text-right text-gray-500 font-medium whitespace-nowrap">
-                      差額<br /><span className="text-gray-400 font-normal">（千葉−足利）</span>
+                      差額<br /><span className="text-gray-400 font-normal">（{parsedBanks[1].name}−{parsedBanks[0].name}）</span>
                     </th>
                   </tr>
                 </thead>
@@ -292,7 +337,7 @@ export default function MortgageCalc() {
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
-                      ticks={[0, 5, 10, 15, 20, 25, 30, 35].filter(y => y <= parseInt(termYears))} />
+                      ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= parseInt(termYears))} />
                     <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
                     <Tooltip labelFormatter={l => `${l}年後`}
                       formatter={(v, name) => [fmt(Number(v)), name]} />
@@ -305,8 +350,8 @@ export default function MortgageCalc() {
                       <ReferenceLine x={10} stroke="#ef4444" strokeDasharray="4 4"
                         label={{ value: `+${scenario.hike10}%`, position: "insideTopLeft", fontSize: 9, fill: "#991b1b" }} />
                     )}
-                    <Line dataKey="足利銀行" stroke="#3b82f6" strokeWidth={2.5} dot={false} type="monotone" />
-                    <Line dataKey="千葉銀行" stroke="#8b5cf6" strokeWidth={2.5} dot={false} type="monotone" strokeDasharray="6 3" />
+                    <Line dataKey={parsedBanks[0].name} stroke={parsedBanks[0].color} strokeWidth={2.5} dot={false} type="monotone" />
+                    <Line dataKey={parsedBanks[1].name} stroke={parsedBanks[1].color} strokeWidth={2.5} dot={false} type="monotone" strokeDasharray="6 3" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

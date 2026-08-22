@@ -1,7 +1,11 @@
-// 認証実装前の匿名ユーザーID。
-// ブラウザごとに固有のIDを生成してlocalStorageに保存する。
-// 将来、Firebase Auth導入時はここをgetAuth().currentUser.uidに差し替えるだけでよい。
+let _authUid: string | null = null;
+
+export function setAuthUid(uid: string | null) {
+  _authUid = uid;
+}
+
 export function getUid(): string {
+  if (_authUid) return _authUid;
   if (typeof window === "undefined") return "ssr";
   let uid = localStorage.getItem("okane_uid");
   if (!uid) {

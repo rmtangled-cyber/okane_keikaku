@@ -54,6 +54,7 @@ import LoanCard from "./LoanCard";
 import LoanModal from "./LoanModal";
 import SolarCalc from "./SolarCalc";
 import MortgageCalc from "./MortgageCalc";
+import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
@@ -157,6 +158,7 @@ function simulate(
 }
 
 export default function Dashboard() {
+  const { user, loading: authLoading, signIn, signOut } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stocks, setStocks] = useState<StockHolding[]>([]);
   const [funds, setFunds] = useState<FundHolding[]>([]);
@@ -196,6 +198,7 @@ export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   useEffect(() => {
+    if (authLoading) return;
     setAssets(getAssets()); setStocks(getStocks()); setFunds(getFunds());
     setGoals(getGoals()); setSnapshots(getSnapshots()); setExpenses(getExpenses());
     setIncomeProfiles(getIncomeProfiles()); setLifeEvents(getLifeEvents());
@@ -206,7 +209,8 @@ export default function Dashboard() {
     loadIncomeProfiles().then(setIncomeProfiles); loadLifeEvents().then(setLifeEvents);
     loadInsurancePlans().then(setInsurancePlans); loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading]);
 
   // ── Totals ────────────────────────────────────────────
   const stocksTotal = stocks.reduce((s, h) => s + h.currentPrice * h.shares, 0);
@@ -495,6 +499,28 @@ export default function Dashboard() {
               <Download size={15} /><span className="hidden sm:inline">CSV</span>
             </button>
             {renderAddButton()}
+            {!authLoading && (
+              user ? (
+                <button onClick={signOut} title={`ログアウト (${user.displayName ?? user.email})`}
+                  className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors">
+                  {user.photoURL
+                    ? <img src={user.photoURL} className="w-6 h-6 rounded-full" alt="" />
+                    : <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs flex items-center justify-center font-bold">
+                        {(user.displayName ?? user.email ?? "?")[0].toUpperCase()}
+                      </div>
+                  }
+                  <span className="text-xs text-gray-500 hidden sm:inline">ログアウト</span>
+                </button>
+              ) : (
+                <button onClick={signIn}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/>
+                  </svg>
+                  <span className="hidden sm:inline">Googleでログイン</span>
+                </button>
+              )
+            )}
           </div>
         </div>
         <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-3 border-t border-gray-50 overflow-x-auto">
