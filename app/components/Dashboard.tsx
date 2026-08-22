@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard,
+  ChevronRight, CreditCard, Sun, Building2,
 } from "lucide-react";
 
 import {
@@ -52,6 +52,8 @@ import InsurancePlanModal from "./InsurancePlanModal";
 import SpendingModal from "./SpendingModal";
 import LoanCard from "./LoanCard";
 import LoanModal from "./LoanModal";
+import SolarCalc from "./SolarCalc";
+import MortgageCalc from "./MortgageCalc";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
@@ -68,7 +70,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -505,6 +507,8 @@ export default function Dashboard() {
             { key: "収支", icon: <Receipt size={14} /> },
             { key: "家計簿", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
+            { key: "太陽光", icon: <Sun size={14} /> },
+            { key: "住宅ローン", icon: <Building2 size={14} /> },
           ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
             <button key={key} onClick={() => setTab(key)}
               className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -851,6 +855,12 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* ── 太陽光 ───────────────────────────────────── */}
+        {tab === "太陽光" && <SolarCalc />}
+
+        {/* ── 住宅ローン ───────────────────────────────── */}
+        {tab === "住宅ローン" && <MortgageCalc />}
 
         {/* ── ライフプラン ──────────────────────────────── */}
         {tab === "ライフプラン" && (
