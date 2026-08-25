@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import {
   User, GoogleAuthProvider,
-  signInWithPopup, signInWithRedirect, getRedirectResult,
+  signInWithPopup, signInWithRedirect,
   signOut as fbSignOut, onAuthStateChanged,
 } from "firebase/auth";
 import { auth } from "./firebase";
@@ -23,27 +23,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Pick up any pending redirect result (e.g. after iOS redirect flow)
-    getRedirectResult(auth).catch(() => {});
-    return onAuthStateChanged(auth, (u) => {
+    // Safety timeout: if Firebase doesn't resolve auth state in 8s, unblock the UI
+    const timeout = setTimeout(() => setLoading(false), 8000);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      clearTimeout(timeout);
       setAuthUid(u?.uid ?? null);
       setUser(u);
       setLoading(false);
     });
+    return () => { clearTimeout(timeout); unsubscribe(); };
   }, []);
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      // Popup works when called directly from a user gesture (including iOS Safari)
       await signInWithPopup(auth, provider);
     } catch (e: unknown) {
       const code = (e as { code?: string }).code ?? "";
-      // Fall back to redirect only if popup is explicitly blocked
+      // Redirect fallback only when popup is explicitly blocked by the browser
       if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
         await signInWithRedirect(auth, provider);
       }
-      // Other errors (user closed popup, network) are silently ignored
     }
   };
 
