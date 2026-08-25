@@ -148,6 +148,16 @@ export interface LoanPlan {
   updatedAt: string;
 }
 
+// 住宅ローンシミュレーション設定
+export interface MortgageSimPlan {
+  bankName: string;
+  bankRate: string;
+  principalMan: string;
+  termYears: string;
+  periodSettings: { rate: string; extra: string }[];
+  updatedAt: string;
+}
+
 // 保険プラン
 export type InsuranceType =
   | "生命保険" | "医療保険" | "がん保険" | "火災保険"
