@@ -5,12 +5,5 @@ export function setAuthUid(uid: string | null) {
 }
 
 export function getUid(): string {
-  if (_authUid) return _authUid;
-  if (typeof window === "undefined") return "ssr";
-  let uid = localStorage.getItem("okane_uid");
-  if (!uid) {
-    uid = crypto.randomUUID();
-    localStorage.setItem("okane_uid", uid);
-  }
-  return uid;
+  return _authUid ?? "no-user";
 }
