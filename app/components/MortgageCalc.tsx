@@ -5,7 +5,9 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save } from "lucide-react";
+import { loadMortgageSimPlan, saveMortgageSimPlan } from "../../lib/storage";
+import { useAuth } from "../../lib/auth-context";
 
 function calcPayment(principal: number, annualPct: number, months: number): number {
   if (months <= 0 || principal <= 0) return 0;
@@ -151,6 +153,7 @@ const fmt = (v: number) =>
 interface PeriodSetting { rate: string; extra: string }
 
 export default function MortgageCalc() {
+  const { user } = useAuth();
   const [principalMan, setPrincipalMan] = useState("");
   const [termYears, setTermYears] = useState("35");
   const [bankName, setBankName] = useState("千葉銀行");
@@ -160,6 +163,28 @@ export default function MortgageCalc() {
   const [periodSettings, setPeriodSettings] = useState<PeriodSetting[]>(
     Array.from({ length: 9 }, () => ({ rate: "1.075", extra: "" }))
   );
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  // ログイン後にFirestoreから設定を読み込む
+  useEffect(() => {
+    if (!user) return;
+    loadMortgageSimPlan().then(plan => {
+      if (!plan) return;
+      setPrincipalMan(plan.principalMan);
+      setTermYears(plan.termYears);
+      setBankName(plan.bankName);
+      setBankRate(plan.bankRate);
+      if (plan.periodSettings?.length) {
+        setPeriodSettings(prev => {
+          const next = plan.periodSettings.length >= 9
+            ? plan.periodSettings
+            : [...plan.periodSettings, ...prev.slice(plan.periodSettings.length)];
+          return next;
+        });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const principal = (parseFloat(principalMan) || 0) * 10000;
   const termMonths = (parseInt(termYears) || 35) * 12;
@@ -170,13 +195,22 @@ export default function MortgageCalc() {
   useEffect(() => {
     setPeriodSettings(prev => {
       const next = [...prev];
-      // Always sync period 1 to bank rate
       next[0] = { ...next[0], rate: bankRate };
-      // Fill any new periods beyond current length with bank rate
       while (next.length < numPeriods) next.push({ rate: bankRate, extra: "" });
       return next;
     });
   }, [bankRate, numPeriods]);
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    await saveMortgageSimPlan({
+      bankName, bankRate, principalMan, termYears,
+      periodSettings,
+      updatedAt: new Date().toISOString(),
+    });
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 2000);
+  };
 
   const parsedRates = periodSettings.slice(0, numPeriods).map(p => parseFloat(p.rate) || rate);
   const parsedExtras = periodSettings.slice(0, numPeriods).map(p => (parseFloat(p.extra) || 0) * 10000);
@@ -213,10 +247,17 @@ export default function MortgageCalc() {
               <p className="text-blue-200 text-sm mt-0.5">5年ルール・125%ルール 未払い利息シミュレーション</p>
             </div>
           </div>
-          <button onClick={() => setEditingBank(v => !v)}
-            className="text-xs text-blue-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 transition-colors shrink-0">
-            {editingBank ? "完了" : "銀行を編集"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={handleSave} disabled={saveStatus === "saving"}
+              className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${saveStatus === "saved" ? "border-green-400/60 text-green-300" : "border-white/30 text-blue-200 hover:text-white hover:border-white/60"}`}>
+              <Save size={11} />
+              {saveStatus === "saving" ? "保存中..." : saveStatus === "saved" ? "保存済み" : "保存"}
+            </button>
+            <button onClick={() => setEditingBank(v => !v)}
+              className="text-xs text-blue-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 transition-colors">
+              {editingBank ? "完了" : "銀行を編集"}
+            </button>
+          </div>
         </div>
 
         {editingBank ? (
