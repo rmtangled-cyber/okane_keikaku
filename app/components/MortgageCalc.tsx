@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 
 const BANK_COLORS = ["#3b82f6", "#8b5cf6"] as const;
 
@@ -84,6 +84,114 @@ function calcLoan(
   };
 }
 
+// ── 5年ルール・125%ルール month-by-month simulation ───────────────────────────
+
+interface SimPeriod {
+  label: string;
+  payment: number;
+  capped: boolean;
+  rateAtStart: number;
+}
+
+interface SimResult {
+  periods: SimPeriod[];
+  chartPoints: { year: number; principal: number; unpaidInterest: number; total: number }[];
+  finalLumpSum: number;
+  totalPaid: number;
+  totalInterest: number;
+}
+
+function simulateJP5Year(
+  principal: number,
+  termMonths: number,
+  baseRate: number,
+  hike5: number,
+  hike10: number,
+): SimResult {
+  const getRate = (m: number) =>
+    m <= 60 ? baseRate : m <= 120 ? baseRate + hike5 : baseRate + hike5 + hike10;
+
+  let currentPayment = calcPayment(principal, baseRate, termMonths);
+  let balance = principal;
+  let unpaidInterest = 0;
+  let totalPaid = 0;
+
+  const chartPoints: SimResult["chartPoints"] = [
+    { year: 0, principal: Math.round(balance), unpaidInterest: 0, total: Math.round(balance) },
+  ];
+  const periods: SimPeriod[] = [];
+
+  let periodStart = 0;
+  let periodRate = baseRate;
+  let periodCapped = false;
+
+  for (let m = 1; m <= termMonths; m++) {
+    const rate = getRate(m);
+    const monthlyInterest = balance * rate / 100 / 12;
+
+    if (currentPayment >= monthlyInterest) {
+      let excess = currentPayment - monthlyInterest;
+      // Pay off unpaid interest first before reducing principal
+      const unpaidRepaid = Math.min(unpaidInterest, excess);
+      unpaidInterest = Math.max(0, unpaidInterest - unpaidRepaid);
+      excess -= unpaidRepaid;
+      balance = Math.max(0, balance - excess);
+    } else {
+      unpaidInterest += monthlyInterest - currentPayment;
+    }
+
+    totalPaid += currentPayment;
+
+    if (m % 12 === 0) {
+      chartPoints.push({
+        year: m / 12,
+        principal: Math.round(balance),
+        unpaidInterest: Math.round(unpaidInterest),
+        total: Math.round(balance + unpaidInterest),
+      });
+    }
+
+    // End of 5-year period: recalculate payment with 125% cap
+    if (m % 60 === 0 && m < termMonths) {
+      const remaining = termMonths - m;
+      const newRate = getRate(m + 1);
+
+      periods.push({
+        label: `${periodStart / 12 + 1}〜${m / 12}年目`,
+        payment: Math.round(currentPayment),
+        capped: periodCapped,
+        rateAtStart: periodRate,
+      });
+
+      const idealPayment = calcPayment(balance, newRate, remaining);
+      const cap = currentPayment * 1.25;
+      periodCapped = idealPayment > cap;
+      currentPayment = Math.min(idealPayment, cap);
+      periodStart = m;
+      periodRate = newRate;
+    }
+  }
+
+  periods.push({
+    label: `${periodStart / 12 + 1}〜${termMonths / 12}年目`,
+    payment: Math.round(currentPayment),
+    capped: periodCapped,
+    rateAtStart: periodRate,
+  });
+
+  const finalLumpSum = Math.max(0, Math.round(balance + unpaidInterest));
+
+  return {
+    periods,
+    chartPoints,
+    finalLumpSum,
+    totalPaid: Math.round(totalPaid),
+    totalInterest: Math.round(totalPaid + finalLumpSum - principal),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Scenario { label: string; hike5: number; hike10: number }
 
 const SCENARIOS: Scenario[] = [
@@ -109,6 +217,8 @@ export default function MortgageCalc() {
     { name: "千葉銀行", rate: "1.075" },
   ]);
   const [editingBank, setEditingBank] = useState(false);
+  const [showRulesSim, setShowRulesSim] = useState(false);
+  const [rulesBank, setRulesBank] = useState(0);
 
   const principal = (parseFloat(principalMan) || 0) * 10000;
   const termMonths = (parseInt(termYears) || 35) * 12;
@@ -146,6 +256,13 @@ export default function MortgageCalc() {
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
+
+  const rulesSim = useMemo(() => {
+    if (!principal || !showRulesSim) return null;
+    const b = parsedBanks[rulesBank];
+    return simulateJP5Year(principal, termMonths, b.rate, scenario.hike5, scenario.hike10);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [principal, termMonths, scenario, rulesBank, showRulesSim, banks]);
 
   return (
     <div className="space-y-5">
@@ -362,10 +479,118 @@ export default function MortgageCalc() {
           <div className="flex items-start gap-2 bg-amber-50 rounded-xl p-4">
             <Info size={13} className="text-amber-600 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700">
-              変動金利の実際の返済では「5年ルール（月額は5年間固定）」と「125%ルール（増加上限）」がありますが、
-              このシミュレーターでは各フェーズ開始時に残高から月額を再計算しているため実態より月額変動が大きく見えます。
+              上の比較表は各フェーズ開始時に残高から月額を再計算するため、実態より月額変動が大きく見えます。
               金利上昇の影響額・総利息の参考値としてご利用ください。
             </p>
+          </div>
+
+          {/* 5年・125%ルール simulation */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-5 py-4 text-left"
+              onClick={() => setShowRulesSim(v => !v)}
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} className="text-orange-500 shrink-0" />
+                <span className="text-sm font-semibold text-gray-800">5年ルール・125%ルール 未払い利息シミュレーション</span>
+              </div>
+              {showRulesSim ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+            </button>
+
+            {showRulesSim && (
+              <div className="px-5 pb-5 space-y-4 border-t border-gray-100">
+                {/* Bank selector */}
+                <div className="flex gap-2 pt-4">
+                  {parsedBanks.map((b, i) => (
+                    <button key={b.name} onClick={() => setRulesBank(i)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${rulesBank === i ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                      {b.name} {b.rate}%
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  月額を5年間固定し、再計算時に前回比125%上限を設けます。上限に抑えられた分は
+                  <strong>未払い利息</strong>として蓄積され、期末に一括清算が必要になる場合があります。
+                </p>
+
+                {rulesSim && (
+                  <>
+                    {/* Period payment table */}
+                    <div className="rounded-xl border border-gray-100 overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-500 font-medium">期間</th>
+                            <th className="px-3 py-2 text-right text-gray-500 font-medium">適用金利</th>
+                            <th className="px-3 py-2 text-right text-gray-500 font-medium">月額返済</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {rulesSim.periods.map((p, i) => (
+                            <tr key={i} className={p.capped ? "bg-red-50" : ""}>
+                              <td className="px-3 py-2 text-gray-700">{p.label}</td>
+                              <td className="px-3 py-2 text-right text-gray-600">{p.rateAtStart.toFixed(3)}%</td>
+                              <td className="px-3 py-2 text-right font-bold">
+                                <span className={p.capped ? "text-red-700" : "text-gray-800"}>
+                                  ¥{p.payment.toLocaleString()}
+                                  {p.capped && <span className="ml-1 text-red-400 font-normal">（125%上限）</span>}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Balance chart */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2">残高・未払い利息推移</h4>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={rulesSim.chartPoints}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`} />
+                          <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
+                          <Tooltip labelFormatter={l => `${l}年後`} formatter={(v, name) => [fmt(Number(v)), name]} />
+                          <Legend />
+                          <Line dataKey="principal" name="元金残高" stroke="#3b82f6" strokeWidth={2} dot={false} type="monotone" />
+                          <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
+                          <Line dataKey="total" name="合計残債" stroke="#f59e0b" strokeWidth={1.5} dot={false} type="monotone" strokeDasharray="4 2" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Summary row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="text-xs text-gray-500">月額合計（返済期間中）</div>
+                        <div className="font-bold text-gray-900 text-sm mt-0.5">{fmt(rulesSim.totalPaid)}</div>
+                      </div>
+                      <div className={`rounded-xl p-3 ${rulesSim.finalLumpSum > 0 ? "bg-red-50" : "bg-green-50"}`}>
+                        <div className="text-xs text-gray-500">期末一括清算額</div>
+                        <div className={`font-bold text-sm mt-0.5 ${rulesSim.finalLumpSum > 0 ? "text-red-700" : "text-green-700"}`}>
+                          {rulesSim.finalLumpSum > 0 ? fmt(rulesSim.finalLumpSum) : "なし"}
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-xl p-3 col-span-2 sm:col-span-1">
+                        <div className="text-xs text-gray-500">利息総額（期末含む）</div>
+                        <div className="font-bold text-orange-700 text-sm mt-0.5">{fmt(rulesSim.totalInterest)}</div>
+                      </div>
+                    </div>
+
+                    {rulesSim.finalLumpSum > 0 && (
+                      <div className="flex items-start gap-2 bg-red-50 rounded-xl p-3">
+                        <AlertTriangle size={13} className="text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700">
+                          返済期末に <strong>{fmt(rulesSim.finalLumpSum)}</strong> の残高（元金＋未払い利息）が残ります。
+                          一括返済または借換えが必要になる可能性があります。
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </>
       )}
