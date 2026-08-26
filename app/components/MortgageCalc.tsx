@@ -163,6 +163,7 @@ export default function MortgageCalc() {
   const [periodSettings, setPeriodSettings] = useState<PeriodSetting[]>(
     Array.from({ length: 9 }, () => ({ rate: "1.075", extra: "" }))
   );
+  const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   // ログイン後にFirestoreから設定を読み込む
@@ -174,6 +175,7 @@ export default function MortgageCalc() {
       setTermYears(plan.termYears);
       setBankName(plan.bankName);
       setBankRate(plan.bankRate);
+      if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
       if (plan.periodSettings?.length) {
         setPeriodSettings(prev => {
           const next = plan.periodSettings.length >= 9
@@ -205,6 +207,7 @@ export default function MortgageCalc() {
     setSaveStatus("saving");
     await saveMortgageSimPlan({
       bankName, bankRate, principalMan, termYears,
+      monthlyIncomeMan,
       periodSettings,
       updatedAt: new Date().toISOString(),
     });
@@ -232,8 +235,15 @@ export default function MortgageCalc() {
     setPeriodSettings(prev => prev.map((p, j) => j === i ? { ...p, [field]: val } : p));
   };
 
+  const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;
   const hasCap = sim?.periods.some(p => p.capped);
   const hasUnpaid = (sim?.finalLumpSum ?? 0) > 0;
+
+  const burdenColor = (ratio: number) => {
+    if (ratio < 25) return "text-green-700 bg-green-50";
+    if (ratio < 35) return "text-yellow-700 bg-yellow-50";
+    return "text-red-700 bg-red-50";
+  };
 
   return (
     <div className="space-y-5">
@@ -300,6 +310,18 @@ export default function MortgageCalc() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
               {[20, 25, 30, 35, 40, 45].map(y => <option key={y} value={y}>{y}年</option>)}
             </select>
+          </div>
+          <div className="col-span-2 pt-1 border-t border-gray-50">
+            <label className="block text-xs font-medium text-gray-600 mb-1">月収（万円）<span className="ml-1 text-gray-400 font-normal">返済負担率の計算に使用</span></label>
+            <div className="flex items-center gap-2">
+              <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
+                placeholder="40"
+                className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <span className="text-sm text-gray-500">万円 / 月</span>
+              {monthlyIncomeMan && parseFloat(monthlyIncomeMan) > 0 && (
+                <span className="text-xs text-gray-400">（年収 {Math.round(parseFloat(monthlyIncomeMan) * 12)}万円）</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -390,13 +412,14 @@ export default function MortgageCalc() {
                     <th className="px-4 py-2.5 text-left text-gray-500 font-medium">期間</th>
                     <th className="px-4 py-2.5 text-right text-gray-500 font-medium">金利</th>
                     <th className="px-4 py-2.5 text-right text-gray-500 font-medium">月額返済</th>
+                    {monthlyIncome > 0 && <th className="px-4 py-2.5 text-right text-gray-500 font-medium">返済負担率</th>}
                     <th className="px-4 py-2.5 text-right text-gray-500 font-medium">繰り上げ返済</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sim.periods.map((p, i) => {
-                    const extra = parsedExtras[i + 1] ?? 0; // extras are applied at start of next period
                     const extraForThisPeriodDisplay = i < numPeriods - 1 ? (parsedExtras[i + 1] ?? 0) : 0;
+                    const burdenRatio = monthlyIncome > 0 ? (p.payment / monthlyIncome) * 100 : null;
                     return (
                       <tr key={i} className={p.capped ? "bg-red-50" : ""}>
                         <td className="px-4 py-2.5 text-gray-700">{p.label}</td>
@@ -407,6 +430,13 @@ export default function MortgageCalc() {
                             {p.capped && <span className="block text-red-400 font-normal text-xs">（125%上限）</span>}
                           </span>
                         </td>
+                        {monthlyIncome > 0 && burdenRatio !== null && (
+                          <td className="px-4 py-2.5 text-right">
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${burdenColor(burdenRatio)}`}>
+                              {burdenRatio.toFixed(1)}%
+                            </span>
+                          </td>
+                        )}
                         <td className="px-4 py-2.5 text-right text-blue-700 font-medium">
                           {extraForThisPeriodDisplay > 0 ? `${fmt(extraForThisPeriodDisplay)}` : <span className="text-gray-300">—</span>}
                         </td>
@@ -483,6 +513,45 @@ export default function MortgageCalc() {
               </p>
             </div>
           )}
+
+          {/* 返済負担率サマリー */}
+          {monthlyIncome > 0 && sim.periods.length > 0 && (() => {
+            const maxRatio = Math.max(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
+            const minRatio = Math.min(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
+            const annualIncome = monthlyIncome * 12;
+            const annualRepayment = sim.periods[0].payment * 12;
+            const annualBurden = (annualRepayment / annualIncome) * 100;
+            return (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">返済負担率</h4>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="text-xs text-gray-500">初期月額負担率</div>
+                    <div className={`font-bold text-lg mt-0.5 ${minRatio < 25 ? "text-green-700" : minRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                      {minRatio.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="text-xs text-gray-500">最大月額負担率</div>
+                    <div className={`font-bold text-lg mt-0.5 ${maxRatio < 25 ? "text-green-700" : maxRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                      {maxRatio.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="text-xs text-gray-500">年間返済負担率</div>
+                    <div className={`font-bold text-lg mt-0.5 ${annualBurden < 25 ? "text-green-700" : annualBurden < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                      {annualBurden.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400 space-y-0.5">
+                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mr-1"></span>25%未満：余裕あり</p>
+                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 mr-1"></span>25〜35%：要注意（金融機関の一般的な審査基準上限）</p>
+                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mr-1"></span>35%超：負担大（家計への影響に注意）</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Quick scenario comparison (collapsed) */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
