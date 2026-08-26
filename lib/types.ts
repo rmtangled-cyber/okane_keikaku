@@ -154,6 +154,7 @@ export interface MortgageSimPlan {
   bankRate: string;
   principalMan: string;
   termYears: string;
+  monthlyIncomeMan?: string;
   periodSettings: { rate: string; extra: string }[];
   updatedAt: string;
 }
