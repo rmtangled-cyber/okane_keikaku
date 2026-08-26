@@ -205,12 +205,16 @@ export default function MortgageCalc() {
 
   const handleSave = async () => {
     setSaveStatus("saving");
-    await saveMortgageSimPlan({
-      bankName, bankRate, principalMan, termYears,
-      monthlyIncomeMan,
-      periodSettings,
-      updatedAt: new Date().toISOString(),
-    });
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, 6000));
+    await Promise.race([
+      saveMortgageSimPlan({
+        bankName, bankRate, principalMan, termYears,
+        monthlyIncomeMan,
+        periodSettings,
+        updatedAt: new Date().toISOString(),
+      }),
+      timeout,
+    ]);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2000);
   };
