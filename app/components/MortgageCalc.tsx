@@ -164,7 +164,7 @@ export default function MortgageCalc() {
     Array.from({ length: 9 }, () => ({ rate: "1.075", extra: "" }))
   );
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
 
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
@@ -204,19 +204,29 @@ export default function MortgageCalc() {
   }, [bankRate, numPeriods]);
 
   const handleSave = async () => {
+    if (!user) {
+      setSaveStatus("login-required");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+      return;
+    }
     setSaveStatus("saving");
-    const timeout = new Promise<void>(resolve => setTimeout(resolve, 6000));
-    await Promise.race([
-      saveMortgageSimPlan({
-        bankName, bankRate, principalMan, termYears,
-        monthlyIncomeMan,
-        periodSettings,
-        updatedAt: new Date().toISOString(),
-      }),
-      timeout,
-    ]);
-    setSaveStatus("saved");
-    setTimeout(() => setSaveStatus("idle"), 2000);
+    try {
+      const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
+      await Promise.race([
+        saveMortgageSimPlan({
+          bankName, bankRate, principalMan, termYears,
+          monthlyIncomeMan,
+          periodSettings,
+          updatedAt: new Date().toISOString(),
+        }),
+        timeout,
+      ]);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
   };
 
   const parsedRates = periodSettings.slice(0, numPeriods).map(p => parseFloat(p.rate) || rate);
@@ -263,9 +273,18 @@ export default function MortgageCalc() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={handleSave} disabled={saveStatus === "saving"}
-              className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${saveStatus === "saved" ? "border-green-400/60 text-green-300" : "border-white/30 text-blue-200 hover:text-white hover:border-white/60"}`}>
+              className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
+                saveStatus === "saved" ? "border-green-400/60 text-green-300" :
+                saveStatus === "error" ? "border-red-400/60 text-red-300" :
+                saveStatus === "login-required" ? "border-yellow-400/60 text-yellow-300" :
+                "border-white/30 text-blue-200 hover:text-white hover:border-white/60"
+              }`}>
               <Save size={11} />
-              {saveStatus === "saving" ? "保存中..." : saveStatus === "saved" ? "保存済み" : "保存"}
+              {saveStatus === "saving" ? "保存中..." :
+               saveStatus === "saved" ? "保存済み" :
+               saveStatus === "error" ? "保存失敗" :
+               saveStatus === "login-required" ? "要ログイン" :
+               "保存"}
             </button>
             <button onClick={() => setEditingBank(v => !v)}
               className="text-xs text-blue-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 transition-colors">
