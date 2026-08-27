@@ -171,7 +171,18 @@ export default function Dashboard() {
   const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>([]);
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
-  const [tab, setTab] = useState<Tab>("概要");
+  const [tab, setTab] = useState<Tab>(() => {
+    try {
+      const saved = localStorage.getItem("okane_tab");
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン"];
+      return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
+    } catch { return "概要"; }
+  });
+
+  const handleTabChange = (t: Tab) => {
+    setTab(t);
+    try { localStorage.setItem("okane_tab", t); } catch { /* ignore */ }
+  };
 
   // Modal states
   const [showAssetModal, setShowAssetModal] = useState(false);
@@ -584,7 +595,7 @@ export default function Dashboard() {
             { key: "太陽光", icon: <Sun size={14} /> },
             { key: "住宅ローン", icon: <Building2 size={14} /> },
           ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
-            <button key={key} onClick={() => setTab(key)}
+            <button key={key} onClick={() => handleTabChange(key)}
               className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
               {icon}{key}
             </button>
