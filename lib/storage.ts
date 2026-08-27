@@ -139,10 +139,8 @@ export async function loadLifeEvents(): Promise<LifeEvent[]> {
 
 // Mortgage Simulation Plan (single doc per user)
 export async function saveMortgageSimPlan(plan: MortgageSimPlan): Promise<void> {
-  try {
-    const ref = doc(db, "users", getUid(), "mortgageSimPlan", "default");
-    await setDoc(ref, plan);
-  } catch { /* ignore */ }
+  const ref = doc(db, "users", getUid(), "mortgageSimPlan", "default");
+  await setDoc(ref, plan);
 }
 export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   try {
