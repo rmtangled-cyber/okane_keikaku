@@ -193,5 +193,6 @@ export interface LifeEvent {
   monthlyAmountChange: number; // 月次収支への継続的影響（+/-）
   oneTimeAmount: number;       // 一時金（0なら無し）
   note?: string;
+  isDraft?: boolean;
   updatedAt: string;
 }

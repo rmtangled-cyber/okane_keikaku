@@ -1,7 +1,7 @@
 "use client";
 
 import { LifeEvent } from "@/lib/types";
-import { Pencil, Trash2, Calendar } from "lucide-react";
+import { Pencil, Trash2, Calendar, Check, X } from "lucide-react";
 
 const TYPE_COLORS: Record<string, string> = {
   "収入変化": "bg-teal-100 text-teal-700",
@@ -16,11 +16,62 @@ interface Props {
   event: LifeEvent;
   onEdit: (e: LifeEvent) => void;
   onDelete: (id: string) => void;
+  onConfirmDraft?: (id: string) => void;
+  onDiscardDraft?: (id: string) => void;
 }
 
-export default function LifeEventCard({ event, onEdit, onDelete }: Props) {
+export default function LifeEventCard({ event, onEdit, onDelete, onConfirmDraft, onDiscardDraft }: Props) {
   const hasMonthly = event.monthlyAmountChange !== 0;
   const hasOneTime = event.oneTimeAmount !== 0;
+
+  if (event.isDraft) {
+    return (
+      <div className="bg-amber-50 rounded-xl border border-dashed border-amber-300 p-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+          <Calendar size={16} className="text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">下書き</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[event.type] ?? "bg-gray-100 text-gray-700"}`}>
+              {event.type}
+            </span>
+            <span className="text-sm font-medium text-gray-700">{event.title}</span>
+          </div>
+          <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+            <span className="font-medium">{event.year}年〜</span>
+            {hasMonthly && (
+              <span className={event.monthlyAmountChange > 0 ? "text-green-600" : "text-red-600"}>
+                月次 {event.monthlyAmountChange > 0 ? "+" : ""}{event.monthlyAmountChange.toLocaleString()}円
+              </span>
+            )}
+            {hasOneTime && (
+              <span className={event.oneTimeAmount > 0 ? "text-blue-600" : "text-orange-600"}>
+                一時金 {event.oneTimeAmount > 0 ? "+" : ""}{event.oneTimeAmount.toLocaleString()}円
+              </span>
+            )}
+          </div>
+          {event.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{event.note}</p>}
+        </div>
+        <div className="flex gap-1 shrink-0">
+          <button
+            onClick={() => onConfirmDraft?.(event.id)}
+            title="確定"
+            className="p-1.5 text-amber-500 hover:text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+          >
+            <Check size={14} />
+          </button>
+          <button
+            onClick={() => onDiscardDraft?.(event.id)}
+            title="削除"
+            className="p-1.5 text-amber-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
