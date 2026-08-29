@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
 
@@ -16,8 +16,9 @@ function calcPayment(principal: number, annualPct: number, months: number): numb
   return principal * r * Math.pow(1 + r, months) / (Math.pow(1 + r, months) - 1);
 }
 
-// ── カスタム期別シミュレーション (5年ルール + 125%ルール) ─────────────────────
+// ── 任意タイミング金利変更対応シミュレーション (5年ルール + 125%ルール) ────────
 
+interface RateChange { id: string; fromYear: number; rate: string; extra: string }
 interface SimPeriod { label: string; payment: number; capped: boolean; rateAtStart: number }
 interface SimResult {
   periods: SimPeriod[];
@@ -31,27 +32,68 @@ interface SimResult {
 function simulateCustom(
   principal: number,
   termMonths: number,
-  periodRates: number[],  // rate for each 5-year period (0-indexed)
-  periodExtras: number[], // extra lump-sum repayment applied at start of each period (index 0 = ignored)
+  rateChanges: { fromYear: number; rate: number; extra: number }[],
 ): SimResult {
-  const numPeriods = Math.ceil(termMonths / 60);
-  const getRate = (periodIdx: number) =>
-    periodRates[Math.min(periodIdx, numPeriods - 1)] ?? periodRates[periodRates.length - 1] ?? 0;
+  const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
 
-  let currentPayment = calcPayment(principal, getRate(0), termMonths);
-  let balance = principal, unpaidInterest = 0, totalPaid = 0, totalExtra = 0;
+  const getRateForYear = (year: number): number => {
+    let r = sorted[0]?.rate ?? 0;
+    for (const rc of sorted) {
+      if (rc.fromYear <= year) r = rc.rate;
+    }
+    return r;
+  };
+
+  let currentRate = getRateForYear(1);
+  let currentPayment = calcPayment(principal, currentRate, termMonths);
+  let balance = principal;
+  let unpaidInterest = 0;
+  let totalPaid = 0;
+  let totalExtra = 0;
 
   const chartPoints: SimResult["chartPoints"] = [
     { year: 0, principal: Math.round(balance), unpaidInterest: 0, total: Math.round(balance) },
   ];
   const periods: SimPeriod[] = [];
-  let periodStart = 0, periodCapped = false;
+  let periodStartYear = 1;
+  let periodCapped = false;
 
   for (let m = 1; m <= termMonths; m++) {
-    const periodIdx = Math.floor((m - 1) / 60);
-    const rate = getRate(periodIdx);
-    const monthlyInterest = balance * rate / 100 / 12;
+    const year = Math.ceil(m / 12);
+    const isFirstMonthOfYear = (m - 1) % 12 === 0;
+    const isFirstMonthOf5YearPeriod = m > 1 && (m - 1) % 60 === 0;
 
+    // Year start: apply extra payments and update rate
+    if (isFirstMonthOfYear && year > 1) {
+      for (const rc of sorted) {
+        if (rc.fromYear === year && rc.extra > 0 && balance > 0) {
+          const applied = Math.min(rc.extra, balance);
+          balance = Math.max(0, balance - applied);
+          totalExtra += applied;
+        }
+      }
+      currentRate = getRateForYear(year);
+    }
+
+    // 5-year rule: record period and recalculate payment
+    if (isFirstMonthOf5YearPeriod) {
+      const periodEndYear = (m - 1) / 12;
+      periods.push({
+        label: `${periodStartYear}〜${periodEndYear}年目`,
+        payment: Math.round(currentPayment),
+        capped: periodCapped,
+        rateAtStart: getRateForYear(periodStartYear),
+      });
+      const remaining = termMonths - m + 1;
+      const ideal = calcPayment(balance, currentRate, remaining);
+      const cap = currentPayment * 1.25;
+      periodCapped = ideal > cap;
+      currentPayment = balance > 0 ? Math.min(ideal, cap) : 0;
+      periodStartYear = year;
+    }
+
+    // Monthly interest/payment
+    const monthlyInterest = balance * currentRate / 100 / 12;
     if (currentPayment >= monthlyInterest) {
       const excess = currentPayment - monthlyInterest;
       const repaid = Math.min(unpaidInterest, excess);
@@ -70,42 +112,13 @@ function simulateCustom(
         total: Math.round(balance + unpaidInterest),
       });
     }
-
-    // 5年期末: 期をまとめ、繰り上げ返済を適用し、月額を再計算
-    if (m % 60 === 0 && m < termMonths) {
-      const endedPeriodIdx = m / 60 - 1;
-      periods.push({
-        label: `${periodStart / 12 + 1}〜${m / 12}年目`,
-        payment: Math.round(currentPayment),
-        capped: periodCapped,
-        rateAtStart: getRate(endedPeriodIdx),
-      });
-
-      // 繰り上げ返済
-      const nextPeriodIdx = m / 60;
-      const extra = periodExtras[nextPeriodIdx] ?? 0;
-      if (extra > 0 && balance > 0) {
-        const applied = Math.min(extra, balance);
-        balance = Math.max(0, balance - applied);
-        totalExtra += applied;
-      }
-
-      const remaining = termMonths - m;
-      const nextRate = getRate(nextPeriodIdx);
-      const ideal = calcPayment(balance, nextRate, remaining);
-      const cap = currentPayment * 1.25;
-      periodCapped = ideal > cap;
-      currentPayment = balance > 0 ? Math.min(ideal, cap) : 0;
-      periodStart = m;
-    }
   }
 
-  const lastPeriodIdx = Math.floor(periodStart / 60);
   periods.push({
-    label: `${periodStart / 12 + 1}〜${termMonths / 12}年目`,
+    label: `${periodStartYear}〜${termMonths / 12}年目`,
     payment: Math.round(currentPayment),
     capped: periodCapped,
-    rateAtStart: getRate(lastPeriodIdx),
+    rateAtStart: getRateForYear(periodStartYear),
   });
 
   const finalLumpSum = Math.max(0, Math.round(balance + unpaidInterest));
@@ -119,14 +132,13 @@ function simulateCustom(
   };
 }
 
-// ── クイック比較用 (参考値) ──────────────────────────────────────────────────
+// ── クイック比較用 ────────────────────────────────────────────────────────────
 
 function calcLoanTotal(principal: number, termMonths: number, baseRate: number, hike5: number, hike10: number) {
   const n1 = Math.min(60, termMonths);
   const n2 = Math.min(60, termMonths - n1);
   const n3 = Math.max(0, termMonths - n1 - n2);
   const r1 = baseRate, r2 = baseRate + hike5, r3 = baseRate + hike5 + hike10;
-
   const p1 = calcPayment(principal, r1, termMonths);
   const b1 = Math.max(0, principal * Math.pow(1 + r1/100/12, n1) - p1 * (Math.pow(1 + r1/100/12, n1) - 1) / (r1/100/12 || 1));
   const p2 = n2 > 0 && b1 > 0 ? calcPayment(b1, r2, termMonths - n1) : 0;
@@ -150,8 +162,6 @@ const SCENARIOS: Scenario[] = [
 const fmt = (v: number) =>
   v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000)}万`;
 
-interface PeriodSetting { rate: string; extra: string }
-
 export default function MortgageCalc() {
   const { user } = useAuth();
   const [principalMan, setPrincipalMan] = useState("");
@@ -160,9 +170,9 @@ export default function MortgageCalc() {
   const [bankRate, setBankRate] = useState("1.075");
   const [editingBank, setEditingBank] = useState(false);
   const [showScenarios, setShowScenarios] = useState(false);
-  const [periodSettings, setPeriodSettings] = useState<PeriodSetting[]>(
-    Array.from({ length: 9 }, () => ({ rate: "1.075", extra: "" }))
-  );
+  const [rateChanges, setRateChanges] = useState<RateChange[]>([
+    { id: "base", fromYear: 1, rate: "1.075", extra: "" },
+  ]);
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
 
@@ -177,31 +187,29 @@ export default function MortgageCalc() {
       setBankRate(plan.bankRate);
       if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
       if (plan.periodSettings?.length) {
-        setPeriodSettings(prev => {
-          const next = plan.periodSettings.length >= 9
-            ? plan.periodSettings
-            : [...plan.periodSettings, ...prev.slice(plan.periodSettings.length)];
-          return next;
-        });
+        const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
+          id: `loaded_${i}`,
+          fromYear: p.fromYear ?? (i * 5 + 1),
+          rate: p.rate,
+          extra: p.extra,
+        }));
+        // Ensure base (fromYear=1) exists
+        if (!loaded.some(rc => rc.fromYear === 1)) {
+          loaded.unshift({ id: "base", fromYear: 1, rate: plan.bankRate, extra: "" });
+        } else {
+          const idx = loaded.findIndex(rc => rc.fromYear === 1);
+          loaded[idx] = { ...loaded[idx], rate: plan.bankRate };
+        }
+        setRateChanges(loaded);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const principal = (parseFloat(principalMan) || 0) * 10000;
-  const termMonths = (parseInt(termYears) || 35) * 12;
-  const numPeriods = Math.ceil(termMonths / 60);
-  const rate = parseFloat(bankRate) || 0;
-
-  // Period 1 rate always follows bank rate; expand array if needed
+  // Base entry tracks bank rate
   useEffect(() => {
-    setPeriodSettings(prev => {
-      const next = [...prev];
-      next[0] = { ...next[0], rate: bankRate };
-      while (next.length < numPeriods) next.push({ rate: bankRate, extra: "" });
-      return next;
-    });
-  }, [bankRate, numPeriods]);
+    setRateChanges(prev => prev.map(rc => rc.fromYear === 1 ? { ...rc, rate: bankRate } : rc));
+  }, [bankRate]);
 
   const handleSave = async () => {
     if (!user) {
@@ -216,7 +224,7 @@ export default function MortgageCalc() {
         saveMortgageSimPlan({
           bankName, bankRate, principalMan, termYears,
           monthlyIncomeMan,
-          periodSettings,
+          periodSettings: rateChanges.map(rc => ({ fromYear: rc.fromYear, rate: rc.rate, extra: rc.extra })),
           updatedAt: new Date().toISOString(),
         }),
         timeout,
@@ -229,14 +237,28 @@ export default function MortgageCalc() {
     }
   };
 
-  const parsedRates = periodSettings.slice(0, numPeriods).map(p => parseFloat(p.rate) || rate);
-  const parsedExtras = periodSettings.slice(0, numPeriods).map(p => (parseFloat(p.extra) || 0) * 10000);
+  const principal = (parseFloat(principalMan) || 0) * 10000;
+  const termYearsNum = parseInt(termYears) || 35;
+  const termMonths = termYearsNum * 12;
+  const rate = parseFloat(bankRate) || 0;
+
+  const parsedRateChanges = useMemo(() =>
+    [...rateChanges]
+      .filter(rc => rc.fromYear >= 1 && rc.fromYear <= termYearsNum)
+      .sort((a, b) => a.fromYear - b.fromYear)
+      .map(rc => ({
+        fromYear: rc.fromYear,
+        rate: parseFloat(rc.rate) || rate,
+        extra: (parseFloat(rc.extra) || 0) * 10000,
+      })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [JSON.stringify(rateChanges), rate, termYearsNum]);
 
   const sim = useMemo(() => {
     if (!principal) return null;
-    return simulateCustom(principal, termMonths, parsedRates, parsedExtras);
+    return simulateCustom(principal, termMonths, parsedRateChanges);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [principal, termMonths, JSON.stringify(parsedRates), JSON.stringify(parsedExtras)]);
+  }, [principal, termMonths, JSON.stringify(parsedRateChanges)]);
 
   const scenarioResults = useMemo(() => {
     if (!principal) return null;
@@ -244,10 +266,30 @@ export default function MortgageCalc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principal, termMonths, bankRate]);
 
-  const updatePeriod = (i: number, field: "rate" | "extra", val: string) => {
-    if (i === 0 && field === "rate") return; // period 1 rate is locked to bank rate
-    setPeriodSettings(prev => prev.map((p, j) => j === i ? { ...p, [field]: val } : p));
+  const addRateChange = () => {
+    const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
+    const last = sorted[sorted.length - 1];
+    const nextYear = Math.min(last.fromYear + 5, termYearsNum);
+    if (nextYear <= last.fromYear) return;
+    setRateChanges(prev => [...prev, {
+      id: `rc_${Date.now()}`,
+      fromYear: nextYear,
+      rate: last.rate,
+      extra: "",
+    }]);
   };
+
+  const updateRateChange = (id: string, field: "fromYear" | "rate" | "extra", val: string) => {
+    setRateChanges(prev => prev.map(rc => rc.id === id ? { ...rc, [field]: field === "fromYear" ? parseInt(val) || 1 : val } : rc));
+  };
+
+  const removeRateChange = (id: string) => {
+    setRateChanges(prev => prev.filter(rc => rc.id !== id));
+  };
+
+  const sortedRateChanges = useMemo(() =>
+    [...rateChanges].sort((a, b) => a.fromYear - b.fromYear),
+  [rateChanges]);
 
   const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;
   const hasCap = sim?.periods.some(p => p.capped);
@@ -349,58 +391,92 @@ export default function MortgageCalc() {
         </div>
       </div>
 
-      {/* Period input table */}
+      {/* Rate change plan */}
       {principal > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-gray-800">金利・繰り上げ返済プラン</h3>
-            <p className="text-xs text-gray-400 mt-0.5">5年ごとの予想金利と繰り上げ返済額を入力してください</p>
+            <h3 className="text-sm font-semibold text-gray-800">金利変更・繰り上げ返済プラン</h3>
+            <p className="text-xs text-gray-400 mt-0.5">金利が変わる年や繰り上げ返済の年を自由に追加できます</p>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium whitespace-nowrap">期間</th>
+                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium whitespace-nowrap">開始年</th>
                   <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">適用金利</th>
-                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">繰り上げ返済<br /><span className="font-normal text-gray-400">（期首に一括・万円）</span></th>
+                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">繰り上げ返済<br /><span className="font-normal text-gray-400">（年初に一括・万円）</span></th>
+                  <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {Array.from({ length: numPeriods }, (_, i) => {
-                  const startYr = i * 5 + 1;
-                  const endYr = Math.min((i + 1) * 5, parseInt(termYears));
-                  const p = periodSettings[i] ?? { rate: bankRate, extra: "" };
+                {/* Base row */}
+                <tr className="bg-blue-50/40">
+                  <td className="px-4 py-3 text-gray-700 font-medium whitespace-nowrap">
+                    1年目〜<span className="ml-1.5 text-blue-500 text-xs">（現在）</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="w-20 text-center text-sm text-gray-400 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1.5">{bankRate}</span>
+                      <span className="text-gray-500">%</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center text-gray-300">—</td>
+                  <td className="px-4 py-3"></td>
+                </tr>
+
+                {/* Additional rate change rows */}
+                {sortedRateChanges.filter(rc => rc.fromYear !== 1).map(rc => {
+                  const beyondTerm = rc.fromYear > termYearsNum;
                   return (
-                    <tr key={i} className={i === 0 ? "bg-blue-50/40" : ""}>
-                      <td className="px-4 py-3 text-gray-700 whitespace-nowrap font-medium">
-                        {startYr}〜{endYr}年目
-                        {i === 0 && <span className="ml-1.5 text-blue-500 text-xs">（現在）</span>}
+                    <tr key={rc.id} className={beyondTerm ? "bg-red-50/30 opacity-60" : ""}>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={rc.fromYear}
+                            min={2}
+                            max={termYearsNum}
+                            onChange={e => updateRateChange(rc.id, "fromYear", e.target.value)}
+                            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                          <span className="text-gray-500 whitespace-nowrap">年目〜</span>
+                        </div>
+                        {beyondTerm && <p className="text-xs text-red-400 mt-0.5">返済期間外</p>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <div className="flex items-center justify-center gap-1">
                           <input
-                            type="number" value={p.rate} step="0.025"
-                            disabled={i === 0}
-                            onChange={e => updatePeriod(i, "rate", e.target.value)}
-                            className={`w-20 border rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-400 ${i === 0 ? "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed" : "border-gray-200 text-gray-900"}`}
+                            type="number"
+                            value={rc.rate}
+                            step="0.025"
+                            onChange={e => updateRateChange(rc.id, "rate", e.target.value)}
+                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                           <span className="text-gray-500">%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        {i === 0 ? (
-                          <div className="text-center text-gray-300">—</div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="number" value={p.extra} step="10" min="0"
-                              placeholder="0"
-                              onChange={e => updatePeriod(i, "extra", e.target.value)}
-                              className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                            />
-                            <span className="text-gray-500">万</span>
-                          </div>
-                        )}
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            value={rc.extra}
+                            step="10"
+                            min="0"
+                            placeholder="0"
+                            onChange={e => updateRateChange(rc.id, "extra", e.target.value)}
+                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                          <span className="text-gray-500">万</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => removeRateChange(rc.id)}
+                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -408,8 +484,15 @@ export default function MortgageCalc() {
               </tbody>
             </table>
           </div>
-          <div className="px-5 py-2.5 border-t border-gray-50">
-            <p className="text-xs text-gray-400">繰り上げ返済は各期首（{[...Array(numPeriods - 1)].map((_, i) => `${(i + 1) * 5}年後`).join("・")}）に残高から一括控除します</p>
+
+          <div className="px-5 py-3 border-t border-gray-50">
+            <button
+              onClick={addRateChange}
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <Plus size={13} />
+              金利変更・繰り上げ返済を追加
+            </button>
           </div>
         </div>
       )}
@@ -433,15 +516,13 @@ export default function MortgageCalc() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2.5 text-left text-gray-500 font-medium">期間</th>
-                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">金利</th>
+                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">期首金利</th>
                     <th className="px-4 py-2.5 text-right text-gray-500 font-medium">月額返済</th>
                     {monthlyIncome > 0 && <th className="px-4 py-2.5 text-right text-gray-500 font-medium">返済負担率</th>}
-                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">繰り上げ返済</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sim.periods.map((p, i) => {
-                    const extraForThisPeriodDisplay = i < numPeriods - 1 ? (parsedExtras[i + 1] ?? 0) : 0;
                     const burdenRatio = monthlyIncome > 0 ? (p.payment / monthlyIncome) * 100 : null;
                     return (
                       <tr key={i} className={p.capped ? "bg-red-50" : ""}>
@@ -460,9 +541,6 @@ export default function MortgageCalc() {
                             </span>
                           </td>
                         )}
-                        <td className="px-4 py-2.5 text-right text-blue-700 font-medium">
-                          {extraForThisPeriodDisplay > 0 ? `${fmt(extraForThisPeriodDisplay)}` : <span className="text-gray-300">—</span>}
-                        </td>
                       </tr>
                     );
                   })}
@@ -478,15 +556,17 @@ export default function MortgageCalc() {
               <LineChart data={sim.chartPoints}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
-                  ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= parseInt(termYears))} />
+                  ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
                 <Tooltip labelFormatter={l => `${l}年後`} formatter={(v, name) => [fmt(Number(v)), name]} />
                 <Legend />
-                {parsedExtras.slice(1).map((ex, i) =>
-                  ex > 0 ? (
-                    <ReferenceLine key={i} x={i + 1} stroke="#3b82f6" strokeDasharray="3 3"
-                      label={{ value: `繰上`, position: "insideTopRight", fontSize: 8, fill: "#3b82f6" }} />
-                  ) : null
+                {parsedRateChanges.filter(rc => rc.extra > 0 && rc.fromYear > 1).map((rc, i) =>
+                  <ReferenceLine key={i} x={rc.fromYear - 1} stroke="#3b82f6" strokeDasharray="3 3"
+                    label={{ value: `繰上`, position: "insideTopRight", fontSize: 8, fill: "#3b82f6" }} />
+                )}
+                {parsedRateChanges.filter(rc => rc.fromYear > 1).map((rc, i) =>
+                  <ReferenceLine key={`rate_${i}`} x={rc.fromYear - 1} stroke="#f59e0b" strokeDasharray="2 4"
+                    label={{ value: `${rc.rate.toFixed ? rc.rate.toFixed(2) : rc.rate}%`, position: "insideTopLeft", fontSize: 8, fill: "#92400e" }} />
                 )}
                 <Line dataKey="principal" name="元金残高" stroke="#3b82f6" strokeWidth={2} dot={false} type="monotone" />
                 <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
@@ -576,7 +656,7 @@ export default function MortgageCalc() {
             );
           })()}
 
-          {/* Quick scenario comparison (collapsed) */}
+          {/* Quick scenario comparison */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <button className="w-full flex items-center justify-between px-5 py-4 text-left"
               onClick={() => setShowScenarios(v => !v)}>
