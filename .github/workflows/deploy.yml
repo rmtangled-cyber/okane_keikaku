@@ -30,3 +30,8 @@ jobs:
           channelId: live
           projectId: okane-kanri-538ad
 
+      - name: Deploy Firestore Rules
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OKANE_KANRI_538AD }}' > /tmp/sa.json
+          GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json npx firebase-tools deploy --only firestore:rules --project okane-kanri-538ad
+
