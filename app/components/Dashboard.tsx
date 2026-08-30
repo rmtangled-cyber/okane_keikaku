@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2,
 } from "lucide-react";
 
 import {
@@ -79,8 +79,15 @@ type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支"
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
-function getIncomeForYear(profiles: IncomeProfile[], year: number): IncomeProfile | null {
-  const candidates = profiles.filter(p => !p.activeFromYear || p.activeFromYear <= year);
+function getIncomeForYear(profiles: IncomeProfile[], year: number, baseYear: number = new Date().getFullYear()): IncomeProfile | null {
+  const candidates = profiles.filter(p => {
+    if (p.activeFromYear && p.activeFromYear > year) return false;
+    if (p.activeUntilAge) {
+      const ageAtYear = p.age + (year - baseYear);
+      if (ageAtYear > p.activeUntilAge) return false;
+    }
+    return true;
+  });
   if (candidates.length === 0) return null;
   return candidates.reduce((best, p) =>
     (p.activeFromYear ?? 0) >= (best.activeFromYear ?? 0) ? p : best
@@ -156,7 +163,7 @@ function simulate(
     const year = startYear + i;
 
     // Income
-    const profile = getIncomeForYear(profiles, year);
+    const profile = getIncomeForYear(profiles, year, startYear);
     const takeHome = profile
       ? calcTakeHome(profile.grossMonthly, profile.prefecture, profile.age + i, profile.dependents).takeHome
       : 0;
@@ -1081,6 +1088,59 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Income profiles */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Wallet size={16} className="text-teal-500" /> 収入プロファイル
+                </h3>
+                <button
+                  onClick={() => { setEditingIncome(null); setShowIncomeModal(true); }}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                >
+                  <Plus size={13} /> 追加
+                </button>
+              </div>
+              {incomeProfiles.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm">
+                  <Wallet size={28} className="mx-auto mb-2 text-gray-200" />
+                  収入を追加するとシミュレーションに反映されます
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...incomeProfiles]
+                    .sort((a, b) => (a.activeFromYear ?? 0) - (b.activeFromYear ?? 0))
+                    .map(p => {
+                      const fromYearLabel = p.activeFromYear ? `${p.activeFromYear}年〜` : "現在〜";
+                      return (
+                        <div key={p.id} className="flex items-center justify-between bg-teal-50 rounded-xl px-3 py-2.5 gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
+                            <div className="text-xs text-teal-700 mt-0.5">
+                              {fromYearLabel}（{p.age}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""} ¥{p.grossMonthly.toLocaleString()}/月
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              onClick={() => { setEditingIncome(p); setShowIncomeModal(true); }}
+                              className="p-1.5 hover:bg-teal-100 rounded-lg transition-colors text-teal-600"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteIncome(p.id)}
+                              className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
 
             {/* Life events */}
