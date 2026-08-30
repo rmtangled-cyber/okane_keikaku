@@ -10,11 +10,15 @@ import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense
 
 function userCol(name: string) {
   const uid = auth.currentUser?.uid ?? "no-user";
+  if (uid === "no-user") console.warn(`[storage] userCol("${name}"): auth.currentUser is null`);
   return collection(db, "users", uid, name);
 }
 
 async function fsGetAll<T>(name: string): Promise<T[]> {
+  const uid = auth.currentUser?.uid ?? "no-user";
+  console.log(`[storage] fsGetAll("${name}") uid=${uid}`);
   const snap = await getDocs(userCol(name));
+  console.log(`[storage] fsGetAll("${name}") → ${snap.docs.length} docs`);
   return snap.docs.map(d => d.data() as T);
 }
 
@@ -111,11 +115,19 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   try {
     const items = await fsGetAll<IncomeProfile>("incomeProfiles");
     if (items.length > 0) { lsSaveIncome(items); return items; }
-  } catch { /* fall through */ }
-  return lsLoadIncome();
+    console.log("[storage] loadIncomeProfiles: Firestore empty, fallback to localStorage");
+  } catch (e) {
+    console.error("[storage] loadIncomeProfiles: Firestore error, fallback to localStorage", e);
+  }
+  const ls = lsLoadIncome();
+  console.log(`[storage] loadIncomeProfiles: localStorage has ${ls.length} items`);
+  return ls;
 }
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
+  const uid = auth.currentUser?.uid ?? "no-user";
+  console.log(`[storage] upsertIncomeProfile id=${profile.id} uid=${uid}`);
   await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
+  console.log("[storage] upsertIncomeProfile: setDoc done");
   const current = lsLoadIncome();
   const idx = current.findIndex(p => p.id === profile.id);
   if (idx >= 0) current[idx] = profile; else current.push(profile);
