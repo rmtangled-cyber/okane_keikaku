@@ -267,7 +267,7 @@ export default function MortgageCalc() {
   }, [principal, termMonths, bankRate]);
 
   const addRateChange = () => {
-    const sorted = [...rateChanges].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
+    const sorted = [...rateChanges].sort((a, b) => (parseInt(a.fromYear) || 0) - (parseInt(b.fromYear) || 0));
     const last = sorted[sorted.length - 1];
     const lastYear = parseInt(last.fromYear) || 1;
     const nextYear = Math.min(lastYear + 5, termYearsNum);
@@ -289,7 +289,7 @@ export default function MortgageCalc() {
   };
 
   const sortedRateChanges = useMemo(() =>
-    [...rateChanges].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear)),
+    [...rateChanges].sort((a, b) => (parseInt(a.fromYear) || 9999) - (parseInt(b.fromYear) || 9999)),
   [rateChanges]);
 
   const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;

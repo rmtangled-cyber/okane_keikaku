@@ -96,7 +96,35 @@ function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], ass
   return (fundsReturn + stocksVal * 0.05) / total;
 }
 
-interface SimPoint { year: number; assets: number; label?: string }
+interface SimPoint { year: number; assets: number; label?: string; annualIncome: number; annualExpense: number; oneTime: number }
+
+function LifePlanTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: SimPoint }[]; label?: number }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const fmt = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}億` : `${Math.round(v / 10000)}万`;
+  const balance = d.annualIncome - d.annualExpense;
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+      <div className="font-bold text-gray-800 mb-2 text-sm">{label}年</div>
+      <div className="space-y-1">
+        <div className="flex justify-between gap-4"><span className="text-teal-600">収入（年）</span><span className="font-medium text-teal-700">+{fmt(d.annualIncome)}円</span></div>
+        <div className="flex justify-between gap-4"><span className="text-rose-500">支出（年）</span><span className="font-medium text-rose-600">−{fmt(d.annualExpense)}円</span></div>
+        {d.oneTime !== 0 && (
+          <div className="flex justify-between gap-4">
+            <span className={d.oneTime > 0 ? "text-blue-500" : "text-orange-500"}>一時金</span>
+            <span className={`font-medium ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>{d.oneTime > 0 ? "+" : ""}{fmt(d.oneTime)}円</span>
+          </div>
+        )}
+        <div className={`flex justify-between gap-4 border-t border-gray-100 pt-1 ${balance >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <span>年間収支</span><span className="font-bold">{balance >= 0 ? "+" : ""}{fmt(balance)}円</span>
+        </div>
+        <div className="flex justify-between gap-4 text-violet-600 border-t border-gray-100 pt-1">
+          <span>総資産</span><span className="font-bold">{fmt(d.assets)}円</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function simulate(
   startAssets: number,
@@ -170,6 +198,9 @@ function simulate(
       year,
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
+      annualIncome: Math.round((takeHome + Math.max(0, cumulativeMonthly)) * 12),
+      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment) * 12),
+      oneTime,
     });
   }
   return points;
@@ -1014,13 +1045,7 @@ export default function Dashboard() {
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
                   } width={52} />
-                  <Tooltip
-                    formatter={(v) => {
-                      const n = typeof v === "number" ? v : 0;
-                      return n >= 100000000 ? `¥${(n / 100000000).toFixed(2)}億` : `¥${n.toLocaleString()}`;
-                    }}
-                    labelFormatter={l => `${l}年`}
-                  />
+                  <Tooltip content={<LifePlanTooltip />} />
                   {lifeEvents.map(e => (
                     <ReferenceLine key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
                       label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
