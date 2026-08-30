@@ -13,7 +13,8 @@ interface Props {
 
 export default function IncomeProfileModal({ profile, onSave, onClose }: Props) {
   const [name, setName] = useState("");
-  const [grossMonthly, setGrossMonthly] = useState("");
+  const [grossAnnual, setGrossAnnual] = useState("");
+  const [bonusAnnual, setBonusAnnual] = useState("");
   const [prefecture, setPrefecture] = useState("東京");
   const [age, setAge] = useState("");
   const [dependents, setDependents] = useState("");
@@ -24,7 +25,9 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   useEffect(() => {
     if (profile) {
       setName(profile.name);
-      setGrossMonthly(String(profile.grossMonthly));
+      // 年収優先、なければ月収×12（旧データとの互換）
+      setGrossAnnual(profile.grossAnnual ? String(profile.grossAnnual) : String(profile.grossMonthly * 12));
+      setBonusAnnual(profile.bonusAnnual ? String(profile.bonusAnnual) : "");
       setPrefecture(profile.prefecture);
       setAge(String(profile.age));
       setDependents(String(profile.dependents));
@@ -34,17 +37,31 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
     }
   }, [profile]);
 
-  const gross = parseFloat(grossMonthly) || 0;
+  const grossAnnualNum = parseFloat(grossAnnual) || 0;
+  const grossMonthlyNum = Math.round(grossAnnualNum / 12);
+  const bonusAnnualNum = parseFloat(bonusAnnual) || 0;
   const ageNum = parseInt(age) || 30;
   const depsNum = parseInt(dependents) || 0;
-  const preview = gross > 0 ? calcTakeHome(gross, prefecture, ageNum, depsNum) : null;
+  const preview = grossMonthlyNum > 0 ? calcTakeHome(grossMonthlyNum, prefecture, ageNum, depsNum) : null;
+  const bonusNet = preview ? Math.round(bonusAnnualNum * (preview.takeHome / (grossMonthlyNum || 1))) : 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name || gross <= 0) return;
+    if (!name || grossAnnualNum <= 0) return;
     const fromYear = activeFromYear ? parseInt(activeFromYear) : undefined;
     const untilAge = activeUntilAge ? parseInt(activeUntilAge) : undefined;
-    onSave({ name, grossMonthly: gross, prefecture, age: ageNum, dependents: depsNum, activeFromYear: fromYear, activeUntilAge: untilAge, note: note || undefined });
+    onSave({
+      name,
+      grossMonthly: grossMonthlyNum,
+      grossAnnual: grossAnnualNum,
+      bonusAnnual: bonusAnnualNum || undefined,
+      prefecture,
+      age: ageNum,
+      dependents: depsNum,
+      activeFromYear: fromYear,
+      activeUntilAge: untilAge,
+      note: note || undefined,
+    });
   }
 
   return (
@@ -71,17 +88,39 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">額面月収（円）</label>
-            <input
-              type="number"
-              value={grossMonthly}
-              onChange={e => setGrossMonthly(e.target.value)}
-              placeholder="350000"
-              min={0}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                年収・基本給（円）
+                <span className="ml-1 text-xs font-normal text-gray-400">ボーナス除く</span>
+              </label>
+              <input
+                type="number"
+                value={grossAnnual}
+                onChange={e => setGrossAnnual(e.target.value)}
+                placeholder="4200000"
+                min={0}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                required
+              />
+              {grossMonthlyNum > 0 && (
+                <p className="text-xs text-gray-400 mt-1">月換算: ¥{grossMonthlyNum.toLocaleString()}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                ボーナス年額（円）
+                <span className="ml-1 text-xs font-normal text-gray-400">任意・額面</span>
+              </label>
+              <input
+                type="number"
+                value={bonusAnnual}
+                onChange={e => setBonusAnnual(e.target.value)}
+                placeholder="0"
+                min={0}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -124,7 +163,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
           {/* Live preview */}
           {preview && (
             <div className="bg-teal-50 rounded-xl p-3 space-y-1.5 text-sm">
-              <div className="text-xs font-semibold text-teal-700 mb-2">手取りシミュレーション</div>
+              <div className="text-xs font-semibold text-teal-700 mb-2">手取りシミュレーション（月次）</div>
               {[
                 { label: "厚生年金", val: preview.pension },
                 { label: "健康保険" + (ageNum >= 40 && ageNum < 65 ? "・介護" : ""), val: preview.health },
@@ -141,6 +180,13 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
                 <span>月間手取り</span>
                 <span>¥{preview.takeHome.toLocaleString()}</span>
               </div>
+              <div className="flex justify-between font-bold text-teal-800 pt-1 border-t border-teal-200">
+                <span>年間手取り合計（ボーナス込）</span>
+                <span>¥{(preview.takeHome * 12 + bonusNet).toLocaleString()}</span>
+              </div>
+              {bonusAnnualNum > 0 && (
+                <div className="text-xs text-gray-500 text-right">うちボーナス手取概算: ¥{bonusNet.toLocaleString()}</div>
+              )}
             </div>
           )}
 

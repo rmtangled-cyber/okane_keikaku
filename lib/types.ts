@@ -111,11 +111,13 @@ export interface MonthlyExpense {
 // 収入プロファイル（給与）
 export interface IncomeProfile {
   id: string;
-  name: string;           // ラベル（例: "現職"）
-  grossMonthly: number;   // 額面月収（円）
-  prefecture: string;     // 都道府県（協会けんぽ保険料率用）
+  name: string;            // ラベル（例: "現職"）
+  grossMonthly: number;    // 額面月収（円）= grossAnnual/12 で自動計算
+  grossAnnual?: number;    // 年収・基本給（ボーナス除く、円）
+  bonusAnnual?: number;    // 年間ボーナス額面（円）
+  prefecture: string;      // 都道府県（協会けんぽ保険料率用）
   age: number;
-  dependents: number;     // 扶養家族数
+  dependents: number;      // 扶養家族数
   activeFromYear?: number; // 適用開始年（省略=現在から適用）
   activeUntilAge?: number; // 適用終了年齢（省略=無期限）
   note?: string;
