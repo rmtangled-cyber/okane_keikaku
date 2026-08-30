@@ -48,6 +48,7 @@ import IncomeProfileCard from "./IncomeProfileCard";
 import IncomeProfileModal from "./IncomeProfileModal";
 import LifeEventCard from "./LifeEventCard";
 import LifeEventModal from "./LifeEventModal";
+import LifeEventTemplateModal from "./LifeEventTemplateModal";
 import InsurancePlanCard from "./InsurancePlanCard";
 import InsurancePlanModal from "./InsurancePlanModal";
 import SpendingModal from "./SpendingModal";
@@ -199,6 +200,8 @@ export default function Dashboard() {
   const [editingIncome, setEditingIncome] = useState<IncomeProfile | null>(null);
   const [showLifeEventModal, setShowLifeEventModal] = useState(false);
   const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [editingInsurance, setEditingInsurance] = useState<InsurancePlan | null>(null);
   const [showSpendingModal, setShowSpendingModal] = useState(false);
@@ -402,6 +405,28 @@ export default function Dashboard() {
   const handleDeleteLifeEvent = useCallback((id: string) => {
     setLifeEvents(prev => { const next = prev.filter(e => e.id !== id); saveLifeEvents(next); return next; });
   }, []);
+
+  const handleAddDrafts = useCallback((drafts: LifeEvent[]) => {
+    setDraftEvents(prev => [...prev, ...drafts]);
+  }, []);
+  const handleConfirmDraft = useCallback((id: string) => {
+    setDraftEvents(prev => {
+      const draft = prev.find(e => e.id === id);
+      if (!draft) return prev;
+      const confirmed = { ...draft, isDraft: false, updatedAt: new Date().toISOString() };
+      setLifeEvents(cur => { const next = [...cur, confirmed]; saveLifeEvents(next); return next; });
+      return prev.filter(e => e.id !== id);
+    });
+  }, []);
+  const handleDiscardDraft = useCallback((id: string) => {
+    setDraftEvents(prev => prev.filter(e => e.id !== id));
+  }, []);
+  const handleConfirmAllDrafts = useCallback(() => {
+    if (draftEvents.length === 0) return;
+    const confirmed = draftEvents.map(d => ({ ...d, isDraft: false, updatedAt: new Date().toISOString() }));
+    setLifeEvents(prev => { const next = [...prev, ...confirmed]; saveLifeEvents(next); return next; });
+    setDraftEvents([]);
+  }, [draftEvents]);
 
   const handleSaveInsurance = useCallback((data: Omit<InsurancePlan, "id" | "updatedAt">) => {
     setInsurancePlans(prev => {
@@ -1011,15 +1036,50 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">ライフイベント</h3>
+                <button
+                  onClick={() => setShowTemplateModal(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 transition-colors"
+                >
+                  テンプレートから追加
+                </button>
               </div>
-              {lifeEvents.length === 0 ? (
+
+              {draftEvents.length > 0 && (
+                <div className="mb-3 bg-amber-50 rounded-xl border border-amber-200 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-amber-700">下書きイベント（{draftEvents.length}件）— 確認して確定してください</span>
+                    <button
+                      onClick={handleConfirmAllDrafts}
+                      className="text-xs px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+                    >
+                      全て確定
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {[...draftEvents].sort((a, b) => a.year - b.year).map(e => (
+                      <LifeEventCard key={e.id} event={e}
+                        onEdit={() => {}}
+                        onDelete={() => {}}
+                        onConfirmDraft={handleConfirmDraft}
+                        onDiscardDraft={handleDiscardDraft} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {lifeEvents.length === 0 && draftEvents.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
                   <MapPin size={32} className="mx-auto mb-3 text-gray-200" />
                   <p className="text-sm">ライフイベントがありません</p>
-                  <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
-                    className="mt-2 text-xs text-violet-600 hover:underline">転職・結婚・住宅購入などを追加する</button>
+                  <div className="flex gap-3 justify-center mt-2">
+                    <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
+                      className="text-xs text-violet-600 hover:underline">手動で追加する</button>
+                    <span className="text-xs text-gray-300">|</span>
+                    <button onClick={() => setShowTemplateModal(true)}
+                      className="text-xs text-violet-600 hover:underline">テンプレートから追加する</button>
+                  </div>
                 </div>
-              ) : (
+              ) : lifeEvents.length > 0 ? (
                 <div className="space-y-2">
                   {[...lifeEvents].sort((a, b) => a.year - b.year).map(e => (
                     <LifeEventCard key={e.id} event={e}
@@ -1027,7 +1087,7 @@ export default function Dashboard() {
                       onDelete={handleDeleteLifeEvent} />
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         )}
@@ -1041,6 +1101,7 @@ export default function Dashboard() {
       {showExpenseModal && <ExpenseModal expense={editingExpense} onSave={handleSaveExpense} onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />}
       {showIncomeModal && <IncomeProfileModal profile={editingIncome} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
       {showLifeEventModal && <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
+      {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
