@@ -101,14 +101,10 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   try { return await fsGetAll<IncomeProfile>("incomeProfiles"); } catch { return []; }
 }
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
-  try {
-    await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
-  } catch (e) { console.error("upsertIncomeProfile:", e); }
+  await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
 }
 export async function deleteIncomeProfileById(id: string): Promise<void> {
-  try {
-    await deleteDoc(doc(userCol("incomeProfiles"), id));
-  } catch (e) { console.error("deleteIncomeProfileById:", e); }
+  await deleteDoc(doc(userCol("incomeProfiles"), id));
 }
 
 // Insurance Plans

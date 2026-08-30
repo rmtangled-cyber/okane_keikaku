@@ -490,20 +490,32 @@ export default function Dashboard() {
     setExpenses(prev => { const next = prev.filter(e => e.id !== id); saveExpenses(next); return next; });
   }, []);
 
-  const handleSaveIncome = useCallback((data: Omit<IncomeProfile, "id" | "updatedAt">) => {
+  const handleSaveIncome = useCallback(async (data: Omit<IncomeProfile, "id" | "updatedAt">) => {
     if (!incomeLoadedRef.current) return;
     const profile: IncomeProfile = editingIncome
       ? { ...editingIncome, ...data, updatedAt: new Date().toISOString() }
       : { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() };
-    upsertIncomeProfile(profile);
+    try {
+      await upsertIncomeProfile(profile);
+    } catch (e) {
+      console.error("収入の保存に失敗:", e);
+      alert("収入の保存に失敗しました。ログイン状態を確認してください。");
+      return;
+    }
     setIncomeProfiles(prev =>
       editingIncome ? prev.map(p => p.id === editingIncome.id ? profile : p) : [...prev, profile]
     );
     setShowIncomeModal(false); setEditingIncome(null);
   }, [editingIncome]);
-  const handleDeleteIncome = useCallback((id: string) => {
+  const handleDeleteIncome = useCallback(async (id: string) => {
     if (!incomeLoadedRef.current) return;
-    deleteIncomeProfileById(id);
+    try {
+      await deleteIncomeProfileById(id);
+    } catch (e) {
+      console.error("収入の削除に失敗:", e);
+      alert("収入の削除に失敗しました。");
+      return;
+    }
     setIncomeProfiles(prev => prev.filter(p => p.id !== id));
   }, []);
 
