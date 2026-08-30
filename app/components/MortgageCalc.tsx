@@ -5,9 +5,56 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
+
+// ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
+
+// 変動金利の仕組み: あなたの金利 = 政策金利 + スプレッド（優遇幅を差し引いた固定差）
+// 出典: 日銀 https://www.boj.or.jp/statistics/index.htm
+const CURRENT_POLICY_RATE = 0.5; // 日銀政策金利（2026年8月時点）
+const THIS_YEAR = new Date().getFullYear();
+
+interface ScenarioDef {
+  id: string;
+  label: string;
+  description: string;
+  accent: string;
+  changes: { calYear: number; policyRate: number }[];
+}
+
+const BOJ_SCENARIOS: ScenarioDef[] = [
+  {
+    id: "hold",
+    label: "現状維持",
+    description: "政策金利 0.5% で据え置き",
+    accent: "border-green-300 bg-green-50",
+    changes: [],
+  },
+  {
+    id: "moderate",
+    label: "緩やか上昇（標準予想）",
+    description: "2027年に1.25%、2028年以降1.75%で横ばい（三井住友DSアセット予想）",
+    accent: "border-blue-300 bg-blue-50",
+    changes: [
+      { calYear: THIS_YEAR + 1, policyRate: 1.25 },
+      { calYear: THIS_YEAR + 2, policyRate: 1.75 },
+    ],
+  },
+  {
+    id: "aggressive",
+    label: "大幅上昇（悲観シナリオ）",
+    description: "2032年頃に政策金利が2.5%まで段階的に上昇するケース",
+    accent: "border-red-300 bg-red-50",
+    changes: [
+      { calYear: THIS_YEAR + 1, policyRate: 1.25 },
+      { calYear: THIS_YEAR + 2, policyRate: 1.75 },
+      { calYear: THIS_YEAR + 4, policyRate: 2.0 },
+      { calYear: THIS_YEAR + 6, policyRate: 2.5 },
+    ],
+  },
+];
 
 function calcPayment(principal: number, annualPct: number, months: number): number {
   if (months <= 0 || principal <= 0) return 0;
@@ -175,6 +222,7 @@ export default function MortgageCalc() {
   ]);
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
+  const [showScenarioPicker, setShowScenarioPicker] = useState(false);
 
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
@@ -265,6 +313,28 @@ export default function MortgageCalc() {
     return SCENARIOS.map(sc => ({ sc, ...calcLoanTotal(principal, termMonths, rate, sc.hike5, sc.hike10) }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principal, termMonths, bankRate]);
+
+  // スプレッド = 現在の銀行金利 − 現在の政策金利（契約中は固定）
+  const spread = (parseFloat(bankRate) || 0) - CURRENT_POLICY_RATE;
+
+  const applyScenario = (sc: ScenarioDef) => {
+    const newChanges: RateChange[] = [
+      { id: "base", fromYear: "1", rate: bankRate, extra: "" },
+      ...sc.changes
+        .map((c, i) => ({
+          id: `sc_${i}_${Date.now()}`,
+          fromYear: String(c.calYear - THIS_YEAR + 1),
+          rate: (c.policyRate + spread).toFixed(3),
+          extra: "",
+        }))
+        .filter(rc => {
+          const y = parseInt(rc.fromYear);
+          return y >= 2 && y <= termYearsNum;
+        }),
+    ];
+    setRateChanges(newChanges);
+    setShowScenarioPicker(false);
+  };
 
   const addRateChange = () => {
     const sorted = [...rateChanges].sort((a, b) => (parseInt(a.fromYear) || 0) - (parseInt(b.fromYear) || 0));
@@ -391,6 +461,84 @@ export default function MortgageCalc() {
           </div>
         </div>
       </div>
+
+      {/* BOJ Scenario auto-setup */}
+      {principal > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-5 py-4 text-left"
+            onClick={() => setShowScenarioPicker(v => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <TrendingUp size={16} className="text-blue-500 shrink-0" />
+              <div>
+                <div className="text-sm font-semibold text-gray-800">日銀政策金利シナリオから自動設定</div>
+                <div className="text-xs text-gray-400 mt-0.5">将来の金利上昇シナリオを選ぶと金利変更プランに自動入力</div>
+              </div>
+            </div>
+            {showScenarioPicker ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+          </button>
+
+          {showScenarioPicker && (
+            <div className="border-t border-gray-50 px-5 pb-5 pt-4 space-y-3">
+              {/* Spread explanation */}
+              <div className="text-xs bg-blue-50 border border-blue-100 rounded-xl p-3 text-blue-800 leading-relaxed">
+                <strong>計算の仕組み：</strong><br />
+                変動金利は「政策金利 ＋ スプレッド（{spread >= 0 ? "+" : ""}{spread.toFixed(3)}%）」で決まります。<br />
+                スプレッドは契約時に固定されるため、政策金利が動いた分だけあなたの金利も同じ幅で変動します。
+                <div className="mt-1 text-blue-600 font-mono">
+                  現在: 政策金利 {CURRENT_POLICY_RATE}% ＋ {spread.toFixed(3)}% ＝ {bankRate}%
+                </div>
+              </div>
+
+              {BOJ_SCENARIOS.map(sc => (
+                <div key={sc.id} className={`border rounded-xl p-4 ${sc.accent}`}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{sc.label}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{sc.description}</div>
+                    </div>
+                    <button
+                      onClick={() => applyScenario(sc)}
+                      className="shrink-0 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      適用
+                    </button>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left py-1 font-medium">時期</th>
+                        <th className="text-center py-1 font-medium">政策金利</th>
+                        <th className="text-right py-1 font-medium">あなたのローン金利</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-gray-700">
+                      <tr>
+                        <td className="py-0.5">現在（{THIS_YEAR}年〜）</td>
+                        <td className="text-center">{CURRENT_POLICY_RATE}%</td>
+                        <td className="text-right font-medium">{bankRate}%</td>
+                      </tr>
+                      {sc.changes.map(c => (
+                        <tr key={c.calYear}>
+                          <td className="py-0.5">{c.calYear}年〜（{c.calYear - THIS_YEAR + 1}年目）</td>
+                          <td className="text-center">{c.policyRate}%</td>
+                          <td className="text-right font-medium text-orange-700">
+                            {(c.policyRate + spread).toFixed(3)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <p className="text-xs text-gray-400">
+                出典: 日銀統計 <a href="https://www.boj.or.jp/statistics/index.htm" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">boj.or.jp</a>、予想は三井住友DSアセットマネジメント（2026年）
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Rate change plan */}
       {principal > 0 && (
