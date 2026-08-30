@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
 import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp } from "lucide-react";
@@ -70,6 +71,7 @@ interface SimPeriod { label: string; payment: number; capped: boolean; rateAtSta
 interface SimResult {
   periods: SimPeriod[];
   chartPoints: { year: number; principal: number; unpaidInterest: number; total: number }[];
+  annualBreakdown: { year: number; interest: number; principal: number }[];
   finalLumpSum: number;
   totalPaid: number;
   totalExtra: number;
@@ -101,6 +103,9 @@ function simulateCustom(
   const chartPoints: SimResult["chartPoints"] = [
     { year: 0, principal: Math.round(balance), unpaidInterest: 0, total: Math.round(balance) },
   ];
+  const annualBreakdown: SimResult["annualBreakdown"] = [];
+  let annualInterestAcc = 0;
+  let annualPrincipalAcc = 0;
   const periods: SimPeriod[] = [];
   let periodStartYear = 1;
   let periodCapped = false;
@@ -117,6 +122,7 @@ function simulateCustom(
           const applied = Math.min(rc.extra, balance);
           balance = Math.max(0, balance - applied);
           totalExtra += applied;
+          annualPrincipalAcc += applied;
         }
       }
       currentRate = getRateForYear(year);
@@ -140,6 +146,7 @@ function simulateCustom(
     }
 
     // Monthly interest/payment
+    const balanceBeforeMonthly = balance;
     const monthlyInterest = balance * currentRate / 100 / 12;
     if (currentPayment >= monthlyInterest) {
       const excess = currentPayment - monthlyInterest;
@@ -150,6 +157,8 @@ function simulateCustom(
       unpaidInterest += monthlyInterest - currentPayment;
     }
     totalPaid += currentPayment;
+    annualInterestAcc += monthlyInterest;
+    annualPrincipalAcc += Math.max(0, balanceBeforeMonthly - balance);
 
     if (m % 12 === 0) {
       chartPoints.push({
@@ -158,6 +167,13 @@ function simulateCustom(
         unpaidInterest: Math.round(unpaidInterest),
         total: Math.round(balance + unpaidInterest),
       });
+      annualBreakdown.push({
+        year: m / 12,
+        interest: Math.round(annualInterestAcc),
+        principal: Math.round(annualPrincipalAcc),
+      });
+      annualInterestAcc = 0;
+      annualPrincipalAcc = 0;
     }
   }
 
@@ -172,6 +188,7 @@ function simulateCustom(
   return {
     periods,
     chartPoints,
+    annualBreakdown,
     finalLumpSum,
     totalPaid: Math.round(totalPaid),
     totalExtra: Math.round(totalExtra),
@@ -721,6 +738,27 @@ export default function MortgageCalc() {
                 <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
                 <Line dataKey="total" name="合計残債" stroke="#f59e0b" strokeWidth={1.5} dot={false} type="monotone" strokeDasharray="4 2" />
               </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Annual interest/principal breakdown chart */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
+            <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={sim.annualBreakdown} barSize={termYearsNum > 30 ? 6 : 10}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                  ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
+                <Tooltip
+                  labelFormatter={l => `${l}年目`}
+                  formatter={(v, name) => [fmt(Number(v)), name]}
+                />
+                <Legend />
+                <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
+                <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
 
