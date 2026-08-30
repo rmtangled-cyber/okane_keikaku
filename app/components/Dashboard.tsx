@@ -103,30 +103,60 @@ function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], ass
   return (fundsReturn + stocksVal * 0.05) / total;
 }
 
-interface SimPoint { year: number; assets: number; label?: string; annualIncome: number; annualExpense: number; oneTime: number }
+interface BreakdownItem { label: string; monthly: number }
+interface SimPoint {
+  year: number; assets: number; label?: string;
+  annualIncome: number; annualExpense: number; oneTime: number;
+  incomeItems: BreakdownItem[];
+  expenseItems: BreakdownItem[];
+}
 
 function LifePlanTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: SimPoint }[]; label?: number }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
-  const fmt = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}億` : `${Math.round(v / 10000)}万`;
+  const fmtM = (v: number) => `¥${Math.round(v).toLocaleString()}`;
+  const fmtY = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}億` : `${Math.round(v / 10000)}万`;
   const balance = d.annualIncome - d.annualExpense;
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[190px] max-w-[240px]">
       <div className="font-bold text-gray-800 mb-2 text-sm">{label}年</div>
-      <div className="space-y-1">
-        <div className="flex justify-between gap-4"><span className="text-teal-600">収入（年）</span><span className="font-medium text-teal-700">+{fmt(d.annualIncome)}円</span></div>
-        <div className="flex justify-between gap-4"><span className="text-rose-500">支出（年）</span><span className="font-medium text-rose-600">−{fmt(d.annualExpense)}円</span></div>
+      <div className="space-y-2">
+        {/* 収入 */}
+        <div>
+          <div className="flex justify-between gap-4 text-teal-700 font-semibold">
+            <span>収入（年計）</span><span>+{fmtY(d.annualIncome)}円</span>
+          </div>
+          {d.incomeItems.map((item, i) => (
+            <div key={i} className="flex justify-between gap-3 text-gray-500 pl-2 mt-0.5">
+              <span className="truncate">{item.label}</span>
+              <span className="shrink-0">{fmtM(item.monthly)}/月</span>
+            </div>
+          ))}
+        </div>
+        {/* 支出 */}
+        <div>
+          <div className="flex justify-between gap-4 text-rose-600 font-semibold">
+            <span>支出（年計）</span><span>−{fmtY(d.annualExpense)}円</span>
+          </div>
+          {d.expenseItems.map((item, i) => (
+            <div key={i} className="flex justify-between gap-3 text-gray-500 pl-2 mt-0.5">
+              <span className="truncate">{item.label}</span>
+              <span className="shrink-0">{fmtM(item.monthly)}/月</span>
+            </div>
+          ))}
+        </div>
+        {/* 一時金 */}
         {d.oneTime !== 0 && (
           <div className="flex justify-between gap-4">
             <span className={d.oneTime > 0 ? "text-blue-500" : "text-orange-500"}>一時金</span>
-            <span className={`font-medium ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>{d.oneTime > 0 ? "+" : ""}{fmt(d.oneTime)}円</span>
+            <span className={`font-medium ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
           </div>
         )}
-        <div className={`flex justify-between gap-4 border-t border-gray-100 pt-1 ${balance >= 0 ? "text-green-600" : "text-red-600"}`}>
-          <span>年間収支</span><span className="font-bold">{balance >= 0 ? "+" : ""}{fmt(balance)}円</span>
+        <div className={`flex justify-between gap-4 border-t border-gray-100 pt-1.5 font-bold ${balance >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <span>年間収支</span><span>{balance >= 0 ? "+" : ""}{fmtY(balance)}円</span>
         </div>
-        <div className="flex justify-between gap-4 text-violet-600 border-t border-gray-100 pt-1">
-          <span>総資産</span><span className="font-bold">{fmt(d.assets)}円</span>
+        <div className="flex justify-between gap-4 text-violet-600 border-t border-gray-100 pt-1.5 font-bold">
+          <span>総資産</span><span>{fmtY(d.assets)}円</span>
         </div>
       </div>
     </div>
@@ -201,13 +231,27 @@ function simulate(
     if (i > 0) assets = assets + annualCashFlow + oneTime + investmentReturn;
 
     const yearEvents = lifeEvents.filter(e => e.year === year);
+
+    const incomeItems: BreakdownItem[] = [];
+    if (profile && takeHome > 0) incomeItems.push({ label: profile.name, monthly: takeHome });
+    if (cumulativeMonthly > 0) incomeItems.push({ label: "ライフイベント", monthly: cumulativeMonthly });
+
+    const expenseItems: BreakdownItem[] = [];
+    if (expenseTotal > 0) expenseItems.push({ label: "固定費・変動費", monthly: expenseTotal });
+    if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
+    if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
+    if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
+    if (cumulativeMonthly < 0) expenseItems.push({ label: "ライフイベント（支出増）", monthly: Math.abs(cumulativeMonthly) });
+
     points.push({
       year,
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
       annualIncome: Math.round((takeHome + Math.max(0, cumulativeMonthly)) * 12),
-      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment) * 12),
+      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
+      incomeItems,
+      expenseItems,
     });
   }
   return points;
