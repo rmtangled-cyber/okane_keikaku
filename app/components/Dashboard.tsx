@@ -26,7 +26,7 @@ import {
   getStocks, saveStocks, loadStocks,
   getFunds, saveFunds, loadFunds,
   getExpenses, saveExpenses, loadExpenses,
-  getIncomeProfiles, saveIncomeProfiles, loadIncomeProfiles,
+  getIncomeProfiles, loadIncomeProfiles, upsertIncomeProfile, deleteIncomeProfileById,
   getLifeEvents, saveLifeEvents, loadLifeEvents,
   getInsurancePlans, saveInsurancePlans, loadInsurancePlans,
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
@@ -492,17 +492,19 @@ export default function Dashboard() {
 
   const handleSaveIncome = useCallback((data: Omit<IncomeProfile, "id" | "updatedAt">) => {
     if (!incomeLoadedRef.current) return;
-    setIncomeProfiles(prev => {
-      const next = editingIncome
-        ? prev.map(p => p.id === editingIncome.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p)
-        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
-      saveIncomeProfiles(next); return next;
-    });
+    const profile: IncomeProfile = editingIncome
+      ? { ...editingIncome, ...data, updatedAt: new Date().toISOString() }
+      : { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() };
+    upsertIncomeProfile(profile);
+    setIncomeProfiles(prev =>
+      editingIncome ? prev.map(p => p.id === editingIncome.id ? profile : p) : [...prev, profile]
+    );
     setShowIncomeModal(false); setEditingIncome(null);
   }, [editingIncome]);
   const handleDeleteIncome = useCallback((id: string) => {
     if (!incomeLoadedRef.current) return;
-    setIncomeProfiles(prev => { const next = prev.filter(p => p.id !== id); saveIncomeProfiles(next); return next; });
+    deleteIncomeProfileById(id);
+    setIncomeProfiles(prev => prev.filter(p => p.id !== id));
   }, []);
 
   const handleSaveLifeEvent = useCallback((data: Omit<LifeEvent, "id" | "updatedAt">) => {
