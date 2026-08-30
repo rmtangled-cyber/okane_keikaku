@@ -194,8 +194,14 @@ function simulate(
 
     // Income
     const profile = getIncomeForYear(profiles, year, startYear);
+    const grossMonthly = profile
+      ? (profile.grossAnnual ? Math.round(profile.grossAnnual / 12) : profile.grossMonthly)
+      : 0;
     const takeHome = profile
-      ? calcTakeHome(profile.grossMonthly, profile.prefecture, profile.age + i, profile.dependents).takeHome
+      ? calcTakeHome(grossMonthly, profile.prefecture, profile.age + i, profile.dependents).takeHome
+      : 0;
+    const bonusTakeHome = (profile?.bonusAnnual && grossMonthly > 0)
+      ? Math.round(profile.bonusAnnual * (takeHome / grossMonthly))
       : 0;
 
     // Fixed expenses
@@ -224,7 +230,8 @@ function simulate(
     // One-time events this year
     const oneTime = lifeEvents.filter(e => e.year === year).reduce((s, e) => s + e.oneTimeAmount, 0);
 
-    const monthlyCashFlow = takeHome - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
+    const bonusMonthlyEquiv = bonusTakeHome / 12;
+    const monthlyCashFlow = takeHome + bonusMonthlyEquiv - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
 
@@ -234,6 +241,7 @@ function simulate(
 
     const incomeItems: BreakdownItem[] = [];
     if (profile && takeHome > 0) incomeItems.push({ label: profile.name, monthly: takeHome });
+    if (bonusTakeHome > 0) incomeItems.push({ label: "ボーナス（手取概算）", monthly: Math.round(bonusTakeHome / 12) });
     if (cumulativeMonthly > 0) incomeItems.push({ label: "ライフイベント", monthly: cumulativeMonthly });
 
     const expenseItems: BreakdownItem[] = [];
@@ -247,7 +255,7 @@ function simulate(
       year,
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
-      annualIncome: Math.round((takeHome + Math.max(0, cumulativeMonthly)) * 12),
+      annualIncome: Math.round((takeHome + bonusMonthlyEquiv + Math.max(0, cumulativeMonthly)) * 12),
       annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
       incomeItems,
@@ -1163,7 +1171,9 @@ export default function Dashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                             <div className="text-xs text-teal-700 mt-0.5">
-                              {fromYearLabel}（{p.age}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""} ¥{p.grossMonthly.toLocaleString()}/月
+                              {fromYearLabel}（{p.age}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""}
+                              {" "}年収 ¥{(p.grossAnnual ?? p.grossMonthly * 12).toLocaleString()}
+                              {p.bonusAnnual ? ` + ボーナス ¥${p.bonusAnnual.toLocaleString()}` : ""}
                             </div>
                           </div>
                           <div className="flex gap-1.5 shrink-0">

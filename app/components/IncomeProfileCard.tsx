@@ -13,7 +13,12 @@ interface Props {
 
 export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const result = calcTakeHome(profile.grossMonthly, profile.prefecture, profile.age, profile.dependents);
+  const grossMonthly = profile.grossAnnual ? Math.round(profile.grossAnnual / 12) : profile.grossMonthly;
+  const result = calcTakeHome(grossMonthly, profile.prefecture, profile.age, profile.dependents);
+  const annualBase = profile.grossAnnual ?? profile.grossMonthly * 12;
+  const bonusAnnual = profile.bonusAnnual ?? 0;
+  const bonusNet = bonusAnnual > 0 ? Math.round(bonusAnnual * (result.takeHome / (grossMonthly || 1))) : 0;
+  const annualTakeHome = result.takeHome * 12 + bonusNet;
 
   const rows: { label: string; amount: number; color: string }[] = [
     { label: "厚生年金保険料", amount: result.pension, color: "text-orange-600" },
@@ -37,7 +42,10 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
                 </span>
               )}
             </div>
-            <div className="text-2xl font-bold text-gray-900">¥{result.grossMonthly.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-gray-900">¥{annualBase.toLocaleString()}<span className="text-sm font-normal text-gray-400">/年</span></div>
+            {bonusAnnual > 0 && (
+              <div className="text-xs text-teal-600 mt-0.5">+ ボーナス ¥{bonusAnnual.toLocaleString()}/年</div>
+            )}
             <div className="text-xs text-gray-500 mt-0.5">{profile.prefecture} · {profile.age}歳 · 扶養{profile.dependents}人</div>
           </div>
           <div className="flex gap-1 items-center">
@@ -52,21 +60,21 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
           </div>
         </div>
 
-        {/* Gross → Take-home flow */}
+        {/* Monthly flow */}
         <div className="mt-3 flex items-center gap-2 text-sm">
           <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
-            <div className="text-xs text-gray-400">額面</div>
-            <div className="font-bold text-gray-700">¥{result.grossMonthly.toLocaleString()}</div>
+            <div className="text-xs text-gray-400">月額面</div>
+            <div className="font-bold text-gray-700">¥{grossMonthly.toLocaleString()}</div>
           </div>
           <div className="text-gray-300 text-lg">−</div>
           <div className="bg-orange-50 rounded-lg px-3 py-2 text-center">
-            <div className="text-xs text-orange-500">控除合計</div>
+            <div className="text-xs text-orange-500">月次控除</div>
             <div className="font-bold text-orange-600">¥{result.totalDeductions.toLocaleString()}</div>
           </div>
           <div className="text-gray-300 text-lg">=</div>
           <div className="bg-green-50 rounded-lg px-3 py-2 text-center flex-1">
-            <div className="text-xs text-green-600">手取り</div>
-            <div className="font-bold text-green-700">¥{result.takeHome.toLocaleString()}</div>
+            <div className="text-xs text-green-600">年間手取り</div>
+            <div className="font-bold text-green-700">¥{(annualTakeHome / 10000).toFixed(0)}万</div>
           </div>
         </div>
 
