@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine,
@@ -274,6 +274,7 @@ export default function Dashboard() {
   const [snapshots, setSnapshots] = useState<{ month: string; total: number }[]>([]);
   const [expenses, setExpenses] = useState<MonthlyExpense[]>([]);
   const [incomeProfiles, setIncomeProfiles] = useState<IncomeProfile[]>([]);
+  const incomeLoadedRef = useRef(false);
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>([]);
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
@@ -327,7 +328,8 @@ export default function Dashboard() {
     loadGoals().then(setGoals);
     loadSnapshots().then(setSnapshots);
     loadExpenses().then(setExpenses);
-    loadIncomeProfiles().then(setIncomeProfiles);
+    incomeLoadedRef.current = false;
+    loadIncomeProfiles().then(data => { incomeLoadedRef.current = true; setIncomeProfiles(data); });
     loadLifeEvents().then(setLifeEvents);
     loadInsurancePlans().then(setInsurancePlans);
     loadSpendingRecords().then(setSpendingRecords);
@@ -489,6 +491,7 @@ export default function Dashboard() {
   }, []);
 
   const handleSaveIncome = useCallback((data: Omit<IncomeProfile, "id" | "updatedAt">) => {
+    if (!incomeLoadedRef.current) return;
     setIncomeProfiles(prev => {
       const next = editingIncome
         ? prev.map(p => p.id === editingIncome.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p)
@@ -498,6 +501,7 @@ export default function Dashboard() {
     setShowIncomeModal(false); setEditingIncome(null);
   }, [editingIncome]);
   const handleDeleteIncome = useCallback((id: string) => {
+    if (!incomeLoadedRef.current) return;
     setIncomeProfiles(prev => { const next = prev.filter(p => p.id !== id); saveIncomeProfiles(next); return next; });
   }, []);
 
