@@ -20,6 +20,8 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   const [dependents, setDependents] = useState("");
   const [activeFromYear, setActiveFromYear] = useState("");
   const [activeUntilAge, setActiveUntilAge] = useState("");
+  const [fromMode, setFromMode] = useState<"year" | "age">("year");
+  const [untilMode, setUntilMode] = useState<"age" | "year">("age");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -37,11 +39,38 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
     }
   }, [profile]);
 
+  const currentYear = new Date().getFullYear();
   const grossAnnualNum = parseFloat(grossAnnual) || 0;
   const grossMonthlyNum = Math.round(grossAnnualNum / 12);
   const bonusAnnualNum = parseFloat(bonusAnnual) || 0;
   const ageNum = parseInt(age) || 30;
   const depsNum = parseInt(dependents) || 0;
+
+  // fromYear ↔ fromAge 変換（内部は年で保持）
+  const fromYearNum = parseInt(activeFromYear) || 0;
+  const fromAgeNum = fromYearNum > 0 ? ageNum + (fromYearNum - currentYear) : 0;
+  const fromDisplayVal = fromMode === "year" ? activeFromYear : (fromYearNum > 0 ? String(fromAgeNum) : "");
+  const handleFromChange = (val: string) => {
+    if (fromMode === "year") {
+      setActiveFromYear(val);
+    } else {
+      const a = parseInt(val);
+      setActiveFromYear(isNaN(a) ? "" : String(currentYear + (a - ageNum)));
+    }
+  };
+
+  // untilAge ↔ untilYear 変換（内部は年齢で保持）
+  const untilAgeNum = parseInt(activeUntilAge) || 0;
+  const untilYearNum = untilAgeNum > 0 ? currentYear + (untilAgeNum - ageNum) : 0;
+  const untilDisplayVal = untilMode === "age" ? activeUntilAge : (untilAgeNum > 0 ? String(untilYearNum) : "");
+  const handleUntilChange = (val: string) => {
+    if (untilMode === "age") {
+      setActiveUntilAge(val);
+    } else {
+      const yr = parseInt(val);
+      setActiveUntilAge(isNaN(yr) ? "" : String(ageNum + (yr - currentYear)));
+    }
+  };
   const preview = grossMonthlyNum > 0 ? calcTakeHome(grossMonthlyNum, prefecture, ageNum, depsNum) : null;
   const bonusNet = preview ? Math.round(bonusAnnualNum * (preview.takeHome / (grossMonthlyNum || 1))) : 0;
 
@@ -192,34 +221,66 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                適用開始年（任意）
-                <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進など</span>
-              </label>
-              <input
-                type="number"
-                value={activeFromYear}
-                onChange={e => setActiveFromYear(e.target.value)}
-                placeholder={`例: ${new Date().getFullYear() + 5}`}
-                min={2020}
-                max={2100}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">
+                  適用開始（任意）
+                  <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進など</span>
+                </label>
+                <button type="button" onClick={() => setFromMode(m => m === "year" ? "age" : "year")}
+                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
+                  {fromMode === "year" ? "年齢で入力" : "年で入力"}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={fromDisplayVal}
+                  onChange={e => handleFromChange(e.target.value)}
+                  placeholder={fromMode === "year" ? `例: ${currentYear + 5}` : "例: 35"}
+                  min={fromMode === "year" ? 2020 : 18}
+                  max={fromMode === "year" ? 2100 : 80}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                  {fromMode === "year" ? "年" : "歳"}
+                </span>
+              </div>
+              {fromDisplayVal && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {fromMode === "year" ? `→ ${ageNum}歳から${fromAgeNum}歳` : `→ ${fromYearNum}年`}
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                終了年齢（任意）
-                <span className="ml-1 text-xs font-normal text-gray-400">退職年齢など</span>
-              </label>
-              <input
-                type="number"
-                value={activeUntilAge}
-                onChange={e => setActiveUntilAge(e.target.value)}
-                placeholder="例: 65"
-                min={18}
-                max={100}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">
+                  終了（任意）
+                  <span className="ml-1 text-xs font-normal text-gray-400">退職など</span>
+                </label>
+                <button type="button" onClick={() => setUntilMode(m => m === "age" ? "year" : "age")}
+                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
+                  {untilMode === "age" ? "年で入力" : "年齢で入力"}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={untilDisplayVal}
+                  onChange={e => handleUntilChange(e.target.value)}
+                  placeholder={untilMode === "age" ? "例: 65" : `例: ${currentYear + (65 - ageNum)}`}
+                  min={untilMode === "age" ? 18 : 2020}
+                  max={untilMode === "age" ? 100 : 2100}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                  {untilMode === "age" ? "歳" : "年"}
+                </span>
+              </div>
+              {untilDisplayVal && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {untilMode === "age" ? `→ ${untilYearNum}年` : `→ ${untilAgeNum}歳`}
+                </p>
+              )}
             </div>
           </div>
 
