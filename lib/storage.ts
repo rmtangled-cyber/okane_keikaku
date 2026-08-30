@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  collection, doc, getDocs, writeBatch, setDoc, getDoc,
+  collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { getUid } from "./uid";
@@ -99,6 +99,16 @@ export function saveIncomeProfiles(items: IncomeProfile[]): void {
 }
 export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   try { return await fsGetAll<IncomeProfile>("incomeProfiles"); } catch { return []; }
+}
+export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
+  try {
+    await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
+  } catch (e) { console.error("upsertIncomeProfile:", e); }
+}
+export async function deleteIncomeProfileById(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(userCol("incomeProfiles"), id));
+  } catch (e) { console.error("deleteIncomeProfileById:", e); }
 }
 
 // Insurance Plans
