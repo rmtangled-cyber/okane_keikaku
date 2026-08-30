@@ -18,7 +18,7 @@ function calcPayment(principal: number, annualPct: number, months: number): numb
 
 // ── 任意タイミング金利変更対応シミュレーション (5年ルール + 125%ルール) ────────
 
-interface RateChange { id: string; fromYear: number; rate: string; extra: string }
+interface RateChange { id: string; fromYear: string; rate: string; extra: string }
 interface SimPeriod { label: string; payment: number; capped: boolean; rateAtStart: number }
 interface SimResult {
   periods: SimPeriod[];
@@ -171,7 +171,7 @@ export default function MortgageCalc() {
   const [editingBank, setEditingBank] = useState(false);
   const [showScenarios, setShowScenarios] = useState(false);
   const [rateChanges, setRateChanges] = useState<RateChange[]>([
-    { id: "base", fromYear: 1, rate: "1.075", extra: "" },
+    { id: "base", fromYear: "1", rate: "1.075", extra: "" },
   ]);
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
@@ -189,15 +189,15 @@ export default function MortgageCalc() {
       if (plan.periodSettings?.length) {
         const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
           id: `loaded_${i}`,
-          fromYear: p.fromYear ?? (i * 5 + 1),
+          fromYear: String(p.fromYear ?? (i * 5 + 1)),
           rate: p.rate,
           extra: p.extra,
         }));
         // Ensure base (fromYear=1) exists
-        if (!loaded.some(rc => rc.fromYear === 1)) {
-          loaded.unshift({ id: "base", fromYear: 1, rate: plan.bankRate, extra: "" });
+        if (!loaded.some(rc => rc.fromYear === "1")) {
+          loaded.unshift({ id: "base", fromYear: "1", rate: plan.bankRate, extra: "" });
         } else {
-          const idx = loaded.findIndex(rc => rc.fromYear === 1);
+          const idx = loaded.findIndex(rc => rc.fromYear === "1");
           loaded[idx] = { ...loaded[idx], rate: plan.bankRate };
         }
         setRateChanges(loaded);
@@ -208,7 +208,7 @@ export default function MortgageCalc() {
 
   // Base entry tracks bank rate
   useEffect(() => {
-    setRateChanges(prev => prev.map(rc => rc.fromYear === 1 ? { ...rc, rate: bankRate } : rc));
+    setRateChanges(prev => prev.map(rc => rc.id === "base" ? { ...rc, rate: bankRate } : rc));
   }, [bankRate]);
 
   const handleSave = async () => {
@@ -224,7 +224,7 @@ export default function MortgageCalc() {
         saveMortgageSimPlan({
           bankName, bankRate, principalMan, termYears,
           monthlyIncomeMan,
-          periodSettings: rateChanges.map(rc => ({ fromYear: rc.fromYear, rate: rc.rate, extra: rc.extra })),
+          periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
           updatedAt: new Date().toISOString(),
         }),
         timeout,
@@ -244,10 +244,10 @@ export default function MortgageCalc() {
 
   const parsedRateChanges = useMemo(() =>
     [...rateChanges]
-      .filter(rc => rc.fromYear >= 1 && rc.fromYear <= termYearsNum)
-      .sort((a, b) => a.fromYear - b.fromYear)
+      .filter(rc => { const y = parseInt(rc.fromYear); return y >= 1 && y <= termYearsNum; })
+      .sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear))
       .map(rc => ({
-        fromYear: rc.fromYear,
+        fromYear: parseInt(rc.fromYear) || 1,
         rate: parseFloat(rc.rate) || rate,
         extra: (parseFloat(rc.extra) || 0) * 10000,
       })),
@@ -267,20 +267,21 @@ export default function MortgageCalc() {
   }, [principal, termMonths, bankRate]);
 
   const addRateChange = () => {
-    const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
+    const sorted = [...rateChanges].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
     const last = sorted[sorted.length - 1];
-    const nextYear = Math.min(last.fromYear + 5, termYearsNum);
-    if (nextYear <= last.fromYear) return;
+    const lastYear = parseInt(last.fromYear) || 1;
+    const nextYear = Math.min(lastYear + 5, termYearsNum);
+    if (nextYear <= lastYear) return;
     setRateChanges(prev => [...prev, {
       id: `rc_${Date.now()}`,
-      fromYear: nextYear,
+      fromYear: String(nextYear),
       rate: last.rate,
       extra: "",
     }]);
   };
 
   const updateRateChange = (id: string, field: "fromYear" | "rate" | "extra", val: string) => {
-    setRateChanges(prev => prev.map(rc => rc.id === id ? { ...rc, [field]: field === "fromYear" ? parseInt(val) || 1 : val } : rc));
+    setRateChanges(prev => prev.map(rc => rc.id === id ? { ...rc, [field]: val } : rc));
   };
 
   const removeRateChange = (id: string) => {
@@ -288,7 +289,7 @@ export default function MortgageCalc() {
   };
 
   const sortedRateChanges = useMemo(() =>
-    [...rateChanges].sort((a, b) => a.fromYear - b.fromYear),
+    [...rateChanges].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear)),
   [rateChanges]);
 
   const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;
@@ -426,8 +427,8 @@ export default function MortgageCalc() {
                 </tr>
 
                 {/* Additional rate change rows */}
-                {sortedRateChanges.filter(rc => rc.fromYear !== 1).map(rc => {
-                  const beyondTerm = rc.fromYear > termYearsNum;
+                {sortedRateChanges.filter(rc => rc.id !== "base").map(rc => {
+                  const beyondTerm = (parseInt(rc.fromYear) || 0) > termYearsNum;
                   return (
                     <tr key={rc.id} className={beyondTerm ? "bg-red-50/30 opacity-60" : ""}>
                       <td className="px-4 py-2.5">
