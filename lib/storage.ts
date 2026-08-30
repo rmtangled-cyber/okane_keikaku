@@ -93,18 +93,37 @@ export async function loadExpenses(): Promise<MonthlyExpense[]> {
 }
 
 // Income Profiles
+const LS_INCOME_KEY = "okane_incomeProfiles_v2";
+function lsLoadIncome(): IncomeProfile[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(LS_INCOME_KEY) ?? "[]"); } catch { return []; }
+}
+function lsSaveIncome(items: IncomeProfile[]) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(LS_INCOME_KEY, JSON.stringify(items)); } catch { /* quota */ }
+}
 export function getIncomeProfiles(): IncomeProfile[] { return []; }
 export function saveIncomeProfiles(items: IncomeProfile[]): void {
   fsSaveAll("incomeProfiles", items).catch(console.error);
+  lsSaveIncome(items);
 }
 export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
-  try { return await fsGetAll<IncomeProfile>("incomeProfiles"); } catch { return []; }
+  try {
+    const items = await fsGetAll<IncomeProfile>("incomeProfiles");
+    if (items.length > 0) { lsSaveIncome(items); return items; }
+  } catch { /* fall through */ }
+  return lsLoadIncome();
 }
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
   await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
+  const current = lsLoadIncome();
+  const idx = current.findIndex(p => p.id === profile.id);
+  if (idx >= 0) current[idx] = profile; else current.push(profile);
+  lsSaveIncome(current);
 }
 export async function deleteIncomeProfileById(id: string): Promise<void> {
   await deleteDoc(doc(userCol("incomeProfiles"), id));
+  lsSaveIncome(lsLoadIncome().filter(p => p.id !== id));
 }
 
 // Insurance Plans

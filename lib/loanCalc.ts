@@ -79,7 +79,46 @@ export function loanCurrentStatus(
   return { balance, elapsedMonths: elapsed, remainingMonths: termMonths - elapsed, currentPayment, isCompleted };
 }
 
-// ある年の月次返済額（シミュレーション用）
+// 住宅ローン: 変動金利を反映した年別月次返済額の配列（ライフプランシミュレーション用）
+export function mortgageMonthlyPaymentByYear(
+  principal: number,
+  termYears: number,
+  periodSettings: { fromYear?: number; rate: string; extra: string }[],
+): number[] {
+  const termMonths = termYears * 12;
+  const sorted = [...periodSettings].sort((a, b) => (a.fromYear ?? 1) - (b.fromYear ?? 1));
+  const result: number[] = [];
+  let balance = principal;
+
+  for (let year = 0; year < termYears; year++) {
+    if (balance <= 0) { result.push(0); continue; }
+    const loanYear = year + 1;
+    // 繰上返済（年初に適用）
+    if (loanYear > 1) {
+      const extraPs = sorted.find(s => (s.fromYear ?? 1) === loanYear);
+      if (extraPs) {
+        const extra = (parseFloat(extraPs.extra) || 0) * 10000;
+        balance = Math.max(0, balance - extra);
+      }
+    }
+    // 適用金利（その年以降の最後のレート変更）
+    const ps = [...sorted].reverse().find(s => (s.fromYear ?? 1) <= loanYear) ?? sorted[0];
+    const annualRatePct = parseFloat(ps?.rate ?? "0") || 0;
+    const remainingMonths = termMonths - year * 12;
+    const monthlyPayment = calcEqualPayment(balance, annualRatePct, remainingMonths);
+    // 12ヶ月分シミュレートして残高を更新
+    const r = annualRatePct / 100 / 12;
+    for (let m = 0; m < 12 && balance > 0; m++) {
+      const interest = Math.floor(balance * r);
+      const principalPart = Math.min(balance, monthlyPayment - interest);
+      balance = Math.max(0, balance - principalPart);
+    }
+    result.push(monthlyPayment);
+  }
+  return result;
+}
+
+// ある年の月次返済額（シミュレーショ��用）
 export function loanPaymentForYear(
   principal: number,
   annualRatePct: number,
