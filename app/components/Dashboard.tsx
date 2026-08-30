@@ -35,7 +35,7 @@ import {
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
-import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear } from "@/lib/loanCalc";
+import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear, mortgageMonthlyPaymentByYear } from "@/lib/loanCalc";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
 import GoalCard from "./GoalCard";
@@ -178,16 +178,20 @@ function simulate(
   const points: SimPoint[] = [];
   let assets = startAssets;
 
-  // Pre-compute mortgage sim monthly payment (initial rate, for life plan approximation)
-  const mortgageMonthly = (() => {
-    if (!mortgageSimPlan) return 0;
-    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
-    if (principal <= 0) return 0;
-    const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
-    const termMonths = (parseInt(mortgageSimPlan.termYears) || 35) * 12;
-    return calcEqualPayment(principal, rate, termMonths);
-  })();
   const mortgageTermYears = mortgageSimPlan ? (parseInt(mortgageSimPlan.termYears) || 35) : 0;
+  // 年別月次返済額（変動金利・繰上返済を反映）
+  const mortgagePaymentByYear: number[] = (() => {
+    if (!mortgageSimPlan) return [];
+    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
+    if (principal <= 0) return [];
+    if (mortgageSimPlan.periodSettings?.length) {
+      return mortgageMonthlyPaymentByYear(principal, mortgageTermYears, mortgageSimPlan.periodSettings);
+    }
+    const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
+    const termMonths = mortgageTermYears * 12;
+    const monthly = calcEqualPayment(principal, rate, termMonths);
+    return Array(mortgageTermYears).fill(monthly);
+  })();
 
   for (let i = 0; i <= yearsToProject; i++) {
     const year = startYear + i;
@@ -220,7 +224,7 @@ function simulate(
     ), 0);
 
     // Mortgage sim payment (applies from startYear for mortgageTermYears)
-    const mortgagePayment = i < mortgageTermYears ? mortgageMonthly : 0;
+    const mortgagePayment = i < mortgageTermYears ? (mortgagePaymentByYear[i] ?? 0) : 0;
 
     // Life events cumulative monthly
     const cumulativeMonthly = lifeEvents
