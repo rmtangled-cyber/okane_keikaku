@@ -3,14 +3,14 @@
 import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
-import { db } from "./firebase";
-import { getUid } from "./uid";
+import { db, auth } from "./firebase";
 import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
 function userCol(name: string) {
-  return collection(db, "users", getUid(), name);
+  const uid = auth.currentUser?.uid ?? "no-user";
+  return collection(db, "users", uid, name);
 }
 
 async function fsGetAll<T>(name: string): Promise<T[]> {
@@ -164,12 +164,12 @@ export async function loadLifeEvents(): Promise<LifeEvent[]> {
 
 // Mortgage Simulation Plan (single doc per user)
 export async function saveMortgageSimPlan(plan: MortgageSimPlan): Promise<void> {
-  const ref = doc(db, "users", getUid(), "mortgageSimPlan", "default");
+  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
   await setDoc(ref, plan);
 }
 export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   try {
-    const ref = doc(db, "users", getUid(), "mortgageSimPlan", "default");
+    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageSimPlan) : null;
   } catch { return null; }
