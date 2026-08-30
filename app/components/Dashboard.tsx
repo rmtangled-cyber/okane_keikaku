@@ -16,6 +16,7 @@ import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
+  MortgageSimPlan,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -30,6 +31,7 @@ import {
   getInsurancePlans, saveInsurancePlans, loadInsurancePlans,
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
   getLoanPlans, saveLoanPlans, loadLoanPlans,
+  loadMortgageSimPlan,
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
@@ -106,10 +108,21 @@ function simulate(
   weightedReturn: number,
   startYear: number,
   yearsToProject: number,
+  mortgageSimPlan?: MortgageSimPlan | null,
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
-  const nowYM = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+
+  // Pre-compute mortgage sim monthly payment (initial rate, for life plan approximation)
+  const mortgageMonthly = (() => {
+    if (!mortgageSimPlan) return 0;
+    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
+    if (principal <= 0) return 0;
+    const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
+    const termMonths = (parseInt(mortgageSimPlan.termYears) || 35) * 12;
+    return calcEqualPayment(principal, rate, termMonths);
+  })();
+  const mortgageTermYears = mortgageSimPlan ? (parseInt(mortgageSimPlan.termYears) || 35) : 0;
 
   for (let i = 0; i <= yearsToProject; i++) {
     const year = startYear + i;
@@ -135,6 +148,9 @@ function simulate(
       l.principal, l.annualRate, l.termMonths, l.loanType, l.startDate, year
     ), 0);
 
+    // Mortgage sim payment (applies from startYear for mortgageTermYears)
+    const mortgagePayment = i < mortgageTermYears ? mortgageMonthly : 0;
+
     // Life events cumulative monthly
     const cumulativeMonthly = lifeEvents
       .filter(e => e.year <= year)
@@ -143,7 +159,7 @@ function simulate(
     // One-time events this year
     const oneTime = lifeEvents.filter(e => e.year === year).reduce((s, e) => s + e.oneTimeAmount, 0);
 
-    const monthlyCashFlow = takeHome - expenseTotal - insuranceTotal - loanTotal + cumulativeMonthly;
+    const monthlyCashFlow = takeHome - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
 
@@ -172,6 +188,7 @@ export default function Dashboard() {
   const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>([]);
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
+  const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
@@ -225,6 +242,7 @@ export default function Dashboard() {
     loadInsurancePlans().then(setInsurancePlans);
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
+    loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
@@ -310,7 +328,7 @@ export default function Dashboard() {
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
-    lifeEvents, weightedReturn, currentYear, 40
+    lifeEvents, weightedReturn, currentYear, 40, mortgageSimPlan
   );
 
   // ── CRUD callbacks ────────────────────────────────────
@@ -1012,6 +1030,14 @@ export default function Dashboard() {
                     return <ReferenceLine key={l.id} x={endY} stroke="#22c55e" strokeDasharray="3 3"
                       label={{ value: `${l.name}完済`, position: "insideTopRight", fontSize: 8, fill: "#15803d" }} />;
                   })}
+                  {mortgageSimPlan && parseFloat(mortgageSimPlan.principalMan) > 0 && (
+                    <ReferenceLine
+                      x={currentYear + (parseInt(mortgageSimPlan.termYears) || 35)}
+                      stroke="#3b82f6"
+                      strokeDasharray="3 3"
+                      label={{ value: `${mortgageSimPlan.bankName || "住宅ローン"}完済`, position: "insideTopRight", fontSize: 8, fill: "#1d4ed8" }}
+                    />
+                  )}
                   <Area type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
                 </AreaChart>
               </ResponsiveContainer>
