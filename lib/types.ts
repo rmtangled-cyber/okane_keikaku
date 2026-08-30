@@ -117,6 +117,7 @@ export interface IncomeProfile {
   age: number;
   dependents: number;     // 扶養家族数
   activeFromYear?: number; // 適用開始年（省略=現在から適用）
+  activeUntilAge?: number; // 適用終了年齢（省略=無期限）
   note?: string;
   updatedAt: string;
 }

@@ -18,6 +18,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   const [age, setAge] = useState("");
   const [dependents, setDependents] = useState("");
   const [activeFromYear, setActiveFromYear] = useState("");
+  const [activeUntilAge, setActiveUntilAge] = useState("");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
       setAge(String(profile.age));
       setDependents(String(profile.dependents));
       setActiveFromYear(profile.activeFromYear ? String(profile.activeFromYear) : "");
+      setActiveUntilAge(profile.activeUntilAge ? String(profile.activeUntilAge) : "");
       setNote(profile.note ?? "");
     }
   }, [profile]);
@@ -41,7 +43,8 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
     e.preventDefault();
     if (!name || gross <= 0) return;
     const fromYear = activeFromYear ? parseInt(activeFromYear) : undefined;
-    onSave({ name, grossMonthly: gross, prefecture, age: ageNum, dependents: depsNum, activeFromYear: fromYear, note: note || undefined });
+    const untilAge = activeUntilAge ? parseInt(activeUntilAge) : undefined;
+    onSave({ name, grossMonthly: gross, prefecture, age: ageNum, dependents: depsNum, activeFromYear: fromYear, activeUntilAge: untilAge, note: note || undefined });
   }
 
   return (
@@ -141,20 +144,37 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              適用開始年（任意）
-              <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進などの年を入れると年齢別に反映</span>
-            </label>
-            <input
-              type="number"
-              value={activeFromYear}
-              onChange={e => setActiveFromYear(e.target.value)}
-              placeholder={`例: ${new Date().getFullYear() + 5}`}
-              min={2020}
-              max={2100}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                適用開始年（任意）
+                <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進など</span>
+              </label>
+              <input
+                type="number"
+                value={activeFromYear}
+                onChange={e => setActiveFromYear(e.target.value)}
+                placeholder={`例: ${new Date().getFullYear() + 5}`}
+                min={2020}
+                max={2100}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                終了年齢（任意）
+                <span className="ml-1 text-xs font-normal text-gray-400">退職年齢など</span>
+              </label>
+              <input
+                type="number"
+                value={activeUntilAge}
+                onChange={e => setActiveUntilAge(e.target.value)}
+                placeholder="例: 65"
+                min={18}
+                max={100}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
           </div>
 
           <div>
