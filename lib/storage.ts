@@ -8,13 +8,22 @@ import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
+// Firestore rejects undefined field values — strip them before writing
+function stripUndefined<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
 function userCol(name: string) {
   const uid = auth.currentUser?.uid ?? "no-user";
+  if (uid === "no-user") console.warn(`[storage] userCol("${name}"): auth.currentUser is null`);
   return collection(db, "users", uid, name);
 }
 
 async function fsGetAll<T>(name: string): Promise<T[]> {
+  const uid = auth.currentUser?.uid ?? "no-user";
+  console.log(`[storage] fsGetAll("${name}") uid=${uid}`);
   const snap = await getDocs(userCol(name));
+  console.log(`[storage] fsGetAll("${name}") → ${snap.docs.length} docs`);
   return snap.docs.map(d => d.data() as T);
 }
 
@@ -25,7 +34,7 @@ async function fsSaveAll<T extends { id?: string; month?: string }>(name: string
   snap.docs.forEach(d => batch.delete(d.ref));
   items.forEach(item => {
     const docId = item.id ?? item.month ?? crypto.randomUUID();
-    batch.set(doc(col, docId), item);
+    batch.set(doc(col, docId), stripUndefined(item));
   });
   await batch.commit();
 }
@@ -111,11 +120,19 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   try {
     const items = await fsGetAll<IncomeProfile>("incomeProfiles");
     if (items.length > 0) { lsSaveIncome(items); return items; }
-  } catch { /* fall through */ }
-  return lsLoadIncome();
+    console.log("[storage] loadIncomeProfiles: Firestore empty, fallback to localStorage");
+  } catch (e) {
+    console.error("[storage] loadIncomeProfiles: Firestore error, fallback to localStorage", e);
+  }
+  const ls = lsLoadIncome();
+  console.log(`[storage] loadIncomeProfiles: localStorage has ${ls.length} items`);
+  return ls;
 }
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
-  await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
+  const uid = auth.currentUser?.uid ?? "no-user";
+  console.log(`[storage] upsertIncomeProfile id=${profile.id} uid=${uid}`);
+  await setDoc(doc(userCol("incomeProfiles"), profile.id), stripUndefined(profile));
+  console.log("[storage] upsertIncomeProfile: setDoc done");
   const current = lsLoadIncome();
   const idx = current.findIndex(p => p.id === profile.id);
   if (idx >= 0) current[idx] = profile; else current.push(profile);
@@ -165,7 +182,7 @@ export async function loadLifeEvents(): Promise<LifeEvent[]> {
 // Mortgage Simulation Plan (single doc per user)
 export async function saveMortgageSimPlan(plan: MortgageSimPlan): Promise<void> {
   const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
-  await setDoc(ref, plan);
+  await setDoc(ref, stripUndefined(plan));
 }
 export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   try {
