@@ -9,14 +9,14 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound,
 } from "lucide-react";
 
 import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
-  MortgageSimPlan,
+  MortgageSimPlan, UserProfile,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -32,6 +32,7 @@ import {
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
   getLoanPlans, saveLoanPlans, loadLoanPlans,
   loadMortgageSimPlan,
+  saveUserProfile, loadUserProfile,
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
@@ -58,6 +59,7 @@ import LoanCard from "./LoanCard";
 import LoanModal from "./LoanModal";
 import SolarCalc from "./SolarCalc";
 import MortgageCalc from "./MortgageCalc";
+import UserProfileTab from "./UserProfileTab";
 import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -75,7 +77,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン" | "プロフィール";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -284,10 +286,11 @@ export default function Dashboard() {
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -339,6 +342,7 @@ export default function Dashboard() {
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
+    loadUserProfile().then(p => { if (p) setUserProfile(p); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
@@ -749,6 +753,7 @@ export default function Dashboard() {
             { key: "ライフプラン", icon: <MapPin size={14} /> },
             { key: "太陽光", icon: <Sun size={14} /> },
             { key: "住宅ローン", icon: <Building2 size={14} /> },
+            { key: "プロフィール", icon: <UserRound size={14} /> },
           ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
             <button key={key} onClick={() => handleTabChange(key)}
               className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -1102,6 +1107,14 @@ export default function Dashboard() {
         {/* ── 住宅ローン ───────────────────────────────── */}
         {tab === "住宅ローン" && <MortgageCalc />}
 
+        {/* ── プロフィール ──────────────────────────────── */}
+        {tab === "プロフィール" && (
+          <UserProfileTab
+            profile={userProfile}
+            onSave={async (p) => { setUserProfile(p); await saveUserProfile(p); }}
+          />
+        )}
+
         {/* ── ライフプラン ──────────────────────────────── */}
         {tab === "ライフプラン" && (
           <div className="space-y-5">
@@ -1286,7 +1299,7 @@ export default function Dashboard() {
       {showFundModal && <FundModal fund={editingFund} onSave={handleSaveFund} onClose={() => { setShowFundModal(false); setEditingFund(null); }} />}
       {showGoalModal && <GoalModal goal={editingGoal} totalAssets={grandTotal} onSave={handleSaveGoal} onClose={() => { setShowGoalModal(false); setEditingGoal(null); }} />}
       {showExpenseModal && <ExpenseModal expense={editingExpense} onSave={handleSaveExpense} onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />}
-      {showIncomeModal && <IncomeProfileModal profile={editingIncome} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
+      {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
       {showLifeEventModal && <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
       {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}

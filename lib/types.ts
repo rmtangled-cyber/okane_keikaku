@@ -108,6 +108,22 @@ export interface MonthlyExpense {
   updatedAt: string;
 }
 
+// ユーザープロフィール（共通設定）
+export interface FamilyMember {
+  type: "spouse" | "child";
+  name?: string;
+  birthYear: number;
+}
+
+export interface UserProfile {
+  id: "default";
+  displayName?: string;
+  birthYear: number;
+  prefecture: string;
+  familyMembers: FamilyMember[];
+  updatedAt: string;
+}
+
 // 収入プロファイル（給与）
 export interface IncomeProfile {
   id: string;
