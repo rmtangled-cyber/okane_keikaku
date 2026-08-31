@@ -8,6 +8,11 @@ import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
+// Firestore rejects undefined field values — strip them before writing
+function stripUndefined<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
 function userCol(name: string) {
   const uid = auth.currentUser?.uid ?? "no-user";
   if (uid === "no-user") console.warn(`[storage] userCol("${name}"): auth.currentUser is null`);
@@ -29,7 +34,7 @@ async function fsSaveAll<T extends { id?: string; month?: string }>(name: string
   snap.docs.forEach(d => batch.delete(d.ref));
   items.forEach(item => {
     const docId = item.id ?? item.month ?? crypto.randomUUID();
-    batch.set(doc(col, docId), item);
+    batch.set(doc(col, docId), stripUndefined(item));
   });
   await batch.commit();
 }
@@ -126,7 +131,7 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
   const uid = auth.currentUser?.uid ?? "no-user";
   console.log(`[storage] upsertIncomeProfile id=${profile.id} uid=${uid}`);
-  await setDoc(doc(userCol("incomeProfiles"), profile.id), profile);
+  await setDoc(doc(userCol("incomeProfiles"), profile.id), stripUndefined(profile));
   console.log("[storage] upsertIncomeProfile: setDoc done");
   const current = lsLoadIncome();
   const idx = current.findIndex(p => p.id === profile.id);
@@ -177,7 +182,7 @@ export async function loadLifeEvents(): Promise<LifeEvent[]> {
 // Mortgage Simulation Plan (single doc per user)
 export async function saveMortgageSimPlan(plan: MortgageSimPlan): Promise<void> {
   const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
-  await setDoc(ref, plan);
+  await setDoc(ref, stripUndefined(plan));
 }
 export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   try {
