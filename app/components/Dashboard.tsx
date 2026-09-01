@@ -385,7 +385,20 @@ export default function Dashboard() {
     const status = loanCurrentStatus(l.principal, l.annualRate, l.termMonths, l.loanType, l.startDate);
     return s + status.currentPayment;
   }, 0);
-  const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal;
+  // 住宅ローンシミュレーターの今月返済額（年目0の月額）
+  const mortgageMonthlyNow = useMemo(() => {
+    if (!mortgageSimPlan) return 0;
+    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
+    const termYears = parseInt(mortgageSimPlan.termYears) || 0;
+    if (principal <= 0 || termYears <= 0) return 0;
+    if (mortgageSimPlan.periodSettings?.length) {
+      return mortgageMonthlyPaymentByYear(principal, termYears, mortgageSimPlan.periodSettings)[0] ?? 0;
+    }
+    const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
+    return calcEqualPayment(principal, rate, termYears * 12);
+  }, [mortgageSimPlan]);
+
+  const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal + mortgageMonthlyNow;
   const monthlySavings = monthlyTakeHome - totalExpenses;
 
   // ── 家計簿 ────────────────────────────────────────────
@@ -923,10 +936,32 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">ローン</h3>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
-                  {activeLoans.length > 0 && <span>返済中 {activeLoans.length}件 · 月計 ¥{loanPaymentsTotal.toLocaleString()}</span>}
+                  {(activeLoans.length > 0 || mortgageMonthlyNow > 0) && (
+                    <span>月計 ¥{(loanPaymentsTotal + mortgageMonthlyNow).toLocaleString()}</span>
+                  )}
                 </div>
               </div>
-              {loanPlans.length === 0 ? (
+              {/* 住宅ローンシミュレーター */}
+              {mortgageMonthlyNow > 0 && mortgageSimPlan && (
+                <div className="bg-white rounded-xl border border-blue-100 p-4 shadow-sm mb-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {mortgageSimPlan.bankName || "住宅ローン"}
+                        <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">シミュレーター</span>
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {mortgageSimPlan.principalMan}万円 · {mortgageSimPlan.termYears}年 · {mortgageSimPlan.bankRate}%
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-rose-600">¥{mortgageMonthlyNow.toLocaleString()}/月</p>
+                      <button onClick={() => handleTabChange("住宅ローン")} className="text-xs text-blue-500 hover:underline mt-0.5">詳細 →</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {loanPlans.length === 0 && mortgageMonthlyNow === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-100 p-6 text-center text-gray-400 shadow-sm">
                   <p className="text-sm">ローンが登録されていません</p>
                   <button onClick={() => { setEditingLoan(null); setShowLoanModal(true); }} className="mt-2 text-xs text-blue-600 hover:underline">ローンを追加する</button>
@@ -980,6 +1015,7 @@ export default function Dashboard() {
                   {(fixedExpenses + variableExpenses) > 0 && <div className="flex justify-between"><span className="text-gray-600">支出予算</span><span className="font-medium text-rose-600">−¥{(fixedExpenses + variableExpenses).toLocaleString()}</span></div>}
                   {insurancePremiums > 0 && <div className="flex justify-between"><span className="text-gray-600">保険料</span><span className="font-medium text-rose-600">−¥{insurancePremiums.toLocaleString()}</span></div>}
                   {loanPaymentsTotal > 0 && <div className="flex justify-between"><span className="text-gray-600">ローン返済</span><span className="font-medium text-rose-600">−¥{loanPaymentsTotal.toLocaleString()}</span></div>}
+                  {mortgageMonthlyNow > 0 && <div className="flex justify-between"><span className="text-gray-600">{mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}（住宅ローン）` : "住宅ローン"}</span><span className="font-medium text-rose-600">−¥{mortgageMonthlyNow.toLocaleString()}</span></div>}
                   <div className={`flex justify-between font-bold pt-2 border-t ${monthlySavings >= 0 ? "border-green-200" : "border-red-200"}`}>
                     <span className="text-gray-800">月間収支</span>
                     <span className={monthlySavings >= 0 ? "text-green-700" : "text-red-700"}>{monthlySavings >= 0 ? "+" : ""}¥{monthlySavings.toLocaleString()}</span>
