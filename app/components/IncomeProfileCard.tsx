@@ -36,6 +36,9 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-xs text-gray-400">{profile.name}</span>
+              {profile.memberId === "spouse" && (
+                <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full">配偶者</span>
+              )}
               {profile.activeFromYear && (
                 <span className="text-xs px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded-full">
                   {profile.activeFromYear}年〜

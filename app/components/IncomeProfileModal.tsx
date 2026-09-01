@@ -12,13 +12,40 @@ interface Props {
   onClose: () => void;
 }
 
+function calcDependentsForMember(
+  memberId: "self" | "spouse",
+  activeFromYear: number,
+  userProfile: UserProfile,
+): number {
+  const currentYear = new Date().getFullYear();
+  const refYear = activeFromYear > 0 ? activeFromYear : currentYear;
+
+  let count = 0;
+
+  if (memberId === "self") {
+    // 配偶者が扶養に入っているなら +1
+    const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
+    if (spouse?.isDependent) count += 1;
+  }
+
+  // 子供: dependentOf が該当者 AND birthYear <= refYear（その年までに生まれる）
+  const children = userProfile.familyMembers.filter(m => m.type === "child");
+  for (const child of children) {
+    const isOwn = memberId === "self"
+      ? (child.dependentOf ?? "self") === "self"
+      : child.dependentOf === "spouse";
+    if (isOwn && child.birthYear <= refYear) count += 1;
+  }
+
+  return count;
+}
+
 export default function IncomeProfileModal({ profile, userProfile, onSave, onClose }: Props) {
+  const [memberId, setMemberId] = useState<"self" | "spouse">("self");
   const [name, setName] = useState("");
   const [grossAnnual, setGrossAnnual] = useState("");
   const [bonusAnnual, setBonusAnnual] = useState("");
   const [prefecture, setPrefecture] = useState("東京");
-  const [age, setAge] = useState("");
-  const [dependents, setDependents] = useState("");
   const [activeFromYear, setActiveFromYear] = useState("");
   const [activeUntilAge, setActiveUntilAge] = useState("");
   const [fromMode, setFromMode] = useState<"year" | "age">("year");
@@ -27,71 +54,83 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
 
   const currentYear = new Date().getFullYear();
 
-  // プロフィールから扶養家族数を計算
-  function calcDependentsFromProfile(up: UserProfile): number {
-    const spouse = up.familyMembers.find(m => m.type === "spouse") ? 1 : 0;
-    const childCount = up.familyMembers.filter(m => m.type === "child").length;
-    return spouse + childCount;
+  // 誰の収入かによって参照する生年を決定
+  function getBirthYear(): number {
+    if (!userProfile) return currentYear - 30;
+    if (memberId === "spouse") {
+      const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
+      return spouse?.birthYear ?? currentYear - 30;
+    }
+    return userProfile.birthYear;
   }
+
+  const birthYear = getBirthYear();
+  const fromYearNum = parseInt(activeFromYear) || 0;
+  // 年齢は適用開始年から逆算（未設定なら現在年で計算）
+  const ageNum = fromYearNum > 0 ? fromYearNum - birthYear : currentYear - birthYear;
+
+  // 扶養家族数を動的計算
+  const depsNum = userProfile
+    ? calcDependentsForMember(memberId, fromYearNum, userProfile)
+    : 0;
 
   useEffect(() => {
     if (profile) {
+      setMemberId(profile.memberId ?? "self");
       setName(profile.name);
-      // 年収優先、なければ月収×12（旧データとの互換）
       setGrossAnnual(profile.grossAnnual ? String(profile.grossAnnual) : String(profile.grossMonthly * 12));
       setBonusAnnual(profile.bonusAnnual ? String(profile.bonusAnnual) : "");
       setPrefecture(profile.prefecture);
-      setAge(String(profile.age));
-      setDependents(String(profile.dependents));
       setActiveFromYear(profile.activeFromYear ? String(profile.activeFromYear) : "");
       setActiveUntilAge(profile.activeUntilAge ? String(profile.activeUntilAge) : "");
       setNote(profile.note ?? "");
     } else if (userProfile) {
-      // 新規追加時: プロフィールからデフォルト値を引用
       setPrefecture(userProfile.prefecture);
-      setAge(String(currentYear - userProfile.birthYear));
-      setDependents(String(calcDependentsFromProfile(userProfile)));
     }
   }, [profile, userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // memberIdが変わったら都道府県も更新（配偶者の場合は同じ都道府県と仮定）
+  useEffect(() => {
+    if (!profile && userProfile) {
+      setPrefecture(userProfile.prefecture);
+    }
+  }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const grossAnnualNum = parseFloat(grossAnnual) || 0;
   const grossMonthlyNum = Math.round(grossAnnualNum / 12);
   const bonusAnnualNum = parseFloat(bonusAnnual) || 0;
-  const ageNum = parseInt(age) || 30;
-  const depsNum = parseInt(dependents) || 0;
 
   // fromYear ↔ fromAge 変換（内部は年で保持）
-  const fromYearNum = parseInt(activeFromYear) || 0;
-  const fromAgeNum = fromYearNum > 0 ? ageNum + (fromYearNum - currentYear) : 0;
+  const fromAgeNum = fromYearNum > 0 ? fromYearNum - birthYear : 0;
   const fromDisplayVal = fromMode === "year" ? activeFromYear : (fromYearNum > 0 ? String(fromAgeNum) : "");
+
   const handleFromChange = (val: string) => {
     if (fromMode === "year") {
       setActiveFromYear(val);
-      // プロフィールの生年があれば適用開始年齢を自動更新
-      if (userProfile && val) {
-        const yr = parseInt(val);
-        if (!isNaN(yr)) setAge(String(yr - userProfile.birthYear));
-      }
     } else {
       const a = parseInt(val);
-      setActiveFromYear(isNaN(a) ? "" : String(currentYear + (a - ageNum)));
+      setActiveFromYear(isNaN(a) ? "" : String(birthYear + a));
     }
   };
 
   // untilAge ↔ untilYear 変換（内部は年齢で保持）
   const untilAgeNum = parseInt(activeUntilAge) || 0;
-  const untilYearNum = untilAgeNum > 0 ? currentYear + (untilAgeNum - ageNum) : 0;
+  const untilYearNum = untilAgeNum > 0 ? birthYear + untilAgeNum : 0;
   const untilDisplayVal = untilMode === "age" ? activeUntilAge : (untilAgeNum > 0 ? String(untilYearNum) : "");
+
   const handleUntilChange = (val: string) => {
     if (untilMode === "age") {
       setActiveUntilAge(val);
     } else {
       const yr = parseInt(val);
-      setActiveUntilAge(isNaN(yr) ? "" : String(ageNum + (yr - currentYear)));
+      setActiveUntilAge(isNaN(yr) ? "" : String(yr - birthYear));
     }
   };
+
   const preview = grossMonthlyNum > 0 ? calcTakeHome(grossMonthlyNum, prefecture, ageNum, depsNum) : null;
   const bonusNet = preview ? Math.round(bonusAnnualNum * (preview.takeHome / (grossMonthlyNum || 1))) : 0;
+
+  const hasSpouse = userProfile?.familyMembers.some(m => m.type === "spouse");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -99,6 +138,7 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
     const fromYear = activeFromYear ? parseInt(activeFromYear) : undefined;
     const untilAge = activeUntilAge ? parseInt(activeUntilAge) : undefined;
     onSave({
+      memberId,
       name,
       grossMonthly: grossMonthlyNum,
       grossAnnual: grossAnnualNum,
@@ -121,7 +161,7 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
               {profile ? "収入を編集" : "収入を追加"}
             </h2>
             {!profile && userProfile && (
-              <p className="text-xs text-teal-600 mt-0.5">プロフィールから都道府県・年齢・扶養を引用しました</p>
+              <p className="text-xs text-teal-600 mt-0.5">プロフィールから年齢・扶養を自動計算します</p>
             )}
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
@@ -129,6 +169,30 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          {/* 誰の収入か */}
+          {hasSpouse && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">誰の収入</label>
+              <div className="flex gap-2">
+                {(["self", "spouse"] as const).map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMemberId(m)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      memberId === m
+                        ? "bg-teal-600 text-white border-teal-600"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {m === "self" ? (userProfile?.displayName ?? "自分") : "配偶者"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">ラベル</label>
             <input
@@ -176,40 +240,99 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">都道府県</label>
+            <select
+              value={prefecture}
+              onChange={e => setPrefecture(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              {PREFECTURES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {/* 適用期間 */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">都道府県</label>
-              <select
-                value={prefecture}
-                onChange={e => setPrefecture(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                {PREFECTURES.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">
+                  適用開始（任意）
+                  <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進など</span>
+                </label>
+                <button type="button" onClick={() => setFromMode(m => m === "year" ? "age" : "year")}
+                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
+                  {fromMode === "year" ? "年齢で入力" : "年で入力"}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={fromDisplayVal}
+                  onChange={e => handleFromChange(e.target.value)}
+                  placeholder={fromMode === "year" ? `例: ${currentYear + 5}` : "例: 35"}
+                  min={fromMode === "year" ? 2020 : 18}
+                  max={fromMode === "year" ? 2100 : 80}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                  {fromMode === "year" ? "年" : "歳"}
+                </span>
+              </div>
+              {fromDisplayVal && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {fromMode === "year" ? `→ ${fromAgeNum}歳` : `→ ${fromYearNum}年`}
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">年齢</label>
-              <input
-                type="number"
-                value={age}
-                onChange={e => setAge(e.target.value)}
-                placeholder="30"
-                min={18}
-                max={80}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">
+                  終了（任意）
+                  <span className="ml-1 text-xs font-normal text-gray-400">退職など</span>
+                </label>
+                <button type="button" onClick={() => setUntilMode(m => m === "age" ? "year" : "age")}
+                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
+                  {untilMode === "age" ? "年で入力" : "年齢で入力"}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={untilDisplayVal}
+                  onChange={e => handleUntilChange(e.target.value)}
+                  placeholder={untilMode === "age" ? "例: 65" : `例: ${birthYear + 65}`}
+                  min={untilMode === "age" ? 18 : 2020}
+                  max={untilMode === "age" ? 100 : 2100}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                  {untilMode === "age" ? "歳" : "年"}
+                </span>
+              </div>
+              {untilDisplayVal && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {untilMode === "age" ? `→ ${untilYearNum}年` : `→ ${untilAgeNum}歳`}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 自動計算された年齢・扶養の表示 */}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-gray-500 mb-0.5">
+                年齢（{fromYearNum > 0 ? `${fromYearNum}年時点` : "現在"}）
+              </p>
+              <p className="font-semibold text-gray-800">{ageNum} 歳</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">扶養家族</label>
-              <input
-                type="number"
-                value={dependents}
-                onChange={e => setDependents(e.target.value)}
-                placeholder="0"
-                min={0}
-                max={10}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <p className="text-xs text-gray-500 mb-0.5">
+                扶養家族数（{fromYearNum > 0 ? `${fromYearNum}年時点` : "現在"}）
+              </p>
+              <p className="font-semibold text-gray-800">{depsNum} 人</p>
+              {!userProfile && (
+                <p className="text-xs text-gray-400">プロフィール未設定</p>
+              )}
             </div>
           </div>
 
@@ -242,71 +365,6 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
               )}
             </div>
           )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-gray-700">
-                  適用開始（任意）
-                  <span className="ml-1 text-xs font-normal text-gray-400">転職・昇進など</span>
-                </label>
-                <button type="button" onClick={() => setFromMode(m => m === "year" ? "age" : "year")}
-                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
-                  {fromMode === "year" ? "年齢で入力" : "年で入力"}
-                </button>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={fromDisplayVal}
-                  onChange={e => handleFromChange(e.target.value)}
-                  placeholder={fromMode === "year" ? `例: ${currentYear + 5}` : "例: 35"}
-                  min={fromMode === "year" ? 2020 : 18}
-                  max={fromMode === "year" ? 2100 : 80}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  {fromMode === "year" ? "年" : "歳"}
-                </span>
-              </div>
-              {fromDisplayVal && (
-                <p className="text-xs text-gray-400 mt-1">
-                  {fromMode === "year" ? `→ ${ageNum}歳から${fromAgeNum}歳` : `→ ${fromYearNum}年`}
-                </p>
-              )}
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-gray-700">
-                  終了（任意）
-                  <span className="ml-1 text-xs font-normal text-gray-400">退職など</span>
-                </label>
-                <button type="button" onClick={() => setUntilMode(m => m === "age" ? "year" : "age")}
-                  className="text-xs px-2 py-0.5 rounded-full border border-teal-300 text-teal-600 hover:bg-teal-50 transition-colors">
-                  {untilMode === "age" ? "年で入力" : "年齢で入力"}
-                </button>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={untilDisplayVal}
-                  onChange={e => handleUntilChange(e.target.value)}
-                  placeholder={untilMode === "age" ? "例: 65" : `例: ${currentYear + (65 - ageNum)}`}
-                  min={untilMode === "age" ? 18 : 2020}
-                  max={untilMode === "age" ? 100 : 2100}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  {untilMode === "age" ? "歳" : "年"}
-                </span>
-              </div>
-              {untilDisplayVal && (
-                <p className="text-xs text-gray-400 mt-1">
-                  {untilMode === "age" ? `→ ${untilYearNum}年` : `→ ${untilAgeNum}歳`}
-                </p>
-              )}
-            </div>
-          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">メモ（任意）</label>
