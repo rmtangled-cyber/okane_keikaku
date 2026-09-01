@@ -9,14 +9,14 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound,
 } from "lucide-react";
 
 import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
-  MortgageSimPlan,
+  MortgageSimPlan, UserProfile,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -32,6 +32,7 @@ import {
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
   getLoanPlans, saveLoanPlans, loadLoanPlans,
   loadMortgageSimPlan,
+  saveUserProfile, loadUserProfile,
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
@@ -58,6 +59,7 @@ import LoanCard from "./LoanCard";
 import LoanModal from "./LoanModal";
 import SolarCalc from "./SolarCalc";
 import MortgageCalc from "./MortgageCalc";
+import UserProfileTab from "./UserProfileTab";
 import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -75,7 +77,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン" | "プロフィール";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -284,10 +286,11 @@ export default function Dashboard() {
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -339,6 +342,7 @@ export default function Dashboard() {
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
+    loadUserProfile().then(p => { if (p) setUserProfile(p); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
@@ -381,7 +385,20 @@ export default function Dashboard() {
     const status = loanCurrentStatus(l.principal, l.annualRate, l.termMonths, l.loanType, l.startDate);
     return s + status.currentPayment;
   }, 0);
-  const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal;
+  // 住宅ローンシミュレーターの今月返済額（年目0の月額）
+  const mortgageMonthlyNow = useMemo(() => {
+    if (!mortgageSimPlan) return 0;
+    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
+    const termYears = parseInt(mortgageSimPlan.termYears) || 0;
+    if (principal <= 0 || termYears <= 0) return 0;
+    if (mortgageSimPlan.periodSettings?.length) {
+      return mortgageMonthlyPaymentByYear(principal, termYears, mortgageSimPlan.periodSettings)[0] ?? 0;
+    }
+    const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
+    return calcEqualPayment(principal, rate, termYears * 12);
+  }, [mortgageSimPlan]);
+
+  const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal + mortgageMonthlyNow;
   const monthlySavings = monthlyTakeHome - totalExpenses;
 
   // ── 家計簿 ────────────────────────────────────────────
@@ -749,6 +766,7 @@ export default function Dashboard() {
             { key: "ライフプラン", icon: <MapPin size={14} /> },
             { key: "太陽光", icon: <Sun size={14} /> },
             { key: "住宅ローン", icon: <Building2 size={14} /> },
+            { key: "プロフィール", icon: <UserRound size={14} /> },
           ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
             <button key={key} onClick={() => handleTabChange(key)}
               className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -918,10 +936,32 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">ローン</h3>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
-                  {activeLoans.length > 0 && <span>返済中 {activeLoans.length}件 · 月計 ¥{loanPaymentsTotal.toLocaleString()}</span>}
+                  {(activeLoans.length > 0 || mortgageMonthlyNow > 0) && (
+                    <span>月計 ¥{(loanPaymentsTotal + mortgageMonthlyNow).toLocaleString()}</span>
+                  )}
                 </div>
               </div>
-              {loanPlans.length === 0 ? (
+              {/* 住宅ローンシミュレーター */}
+              {mortgageMonthlyNow > 0 && mortgageSimPlan && (
+                <div className="bg-white rounded-xl border border-blue-100 p-4 shadow-sm mb-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {mortgageSimPlan.bankName || "住宅ローン"}
+                        <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">シミュレーター</span>
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {mortgageSimPlan.principalMan}万円 · {mortgageSimPlan.termYears}年 · {mortgageSimPlan.bankRate}%
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-rose-600">¥{mortgageMonthlyNow.toLocaleString()}/月</p>
+                      <button onClick={() => handleTabChange("住宅ローン")} className="text-xs text-blue-500 hover:underline mt-0.5">詳細 →</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {loanPlans.length === 0 && mortgageMonthlyNow === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-100 p-6 text-center text-gray-400 shadow-sm">
                   <p className="text-sm">ローンが登録されていません</p>
                   <button onClick={() => { setEditingLoan(null); setShowLoanModal(true); }} className="mt-2 text-xs text-blue-600 hover:underline">ローンを追加する</button>
@@ -975,6 +1015,7 @@ export default function Dashboard() {
                   {(fixedExpenses + variableExpenses) > 0 && <div className="flex justify-between"><span className="text-gray-600">支出予算</span><span className="font-medium text-rose-600">−¥{(fixedExpenses + variableExpenses).toLocaleString()}</span></div>}
                   {insurancePremiums > 0 && <div className="flex justify-between"><span className="text-gray-600">保険料</span><span className="font-medium text-rose-600">−¥{insurancePremiums.toLocaleString()}</span></div>}
                   {loanPaymentsTotal > 0 && <div className="flex justify-between"><span className="text-gray-600">ローン返済</span><span className="font-medium text-rose-600">−¥{loanPaymentsTotal.toLocaleString()}</span></div>}
+                  {mortgageMonthlyNow > 0 && <div className="flex justify-between"><span className="text-gray-600">{mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}（住宅ローン）` : "住宅ローン"}</span><span className="font-medium text-rose-600">−¥{mortgageMonthlyNow.toLocaleString()}</span></div>}
                   <div className={`flex justify-between font-bold pt-2 border-t ${monthlySavings >= 0 ? "border-green-200" : "border-red-200"}`}>
                     <span className="text-gray-800">月間収支</span>
                     <span className={monthlySavings >= 0 ? "text-green-700" : "text-red-700"}>{monthlySavings >= 0 ? "+" : ""}¥{monthlySavings.toLocaleString()}</span>
@@ -1101,6 +1142,14 @@ export default function Dashboard() {
 
         {/* ── 住宅ローン ───────────────────────────────── */}
         {tab === "住宅ローン" && <MortgageCalc />}
+
+        {/* ── プロフィール ──────────────────────────────── */}
+        {tab === "プロフィール" && (
+          <UserProfileTab
+            profile={userProfile}
+            onSave={async (p) => { setUserProfile(p); await saveUserProfile(p); }}
+          />
+        )}
 
         {/* ── ライフプラン ──────────────────────────────── */}
         {tab === "ライフプラン" && (
@@ -1286,7 +1335,7 @@ export default function Dashboard() {
       {showFundModal && <FundModal fund={editingFund} onSave={handleSaveFund} onClose={() => { setShowFundModal(false); setEditingFund(null); }} />}
       {showGoalModal && <GoalModal goal={editingGoal} totalAssets={grandTotal} onSave={handleSaveGoal} onClose={() => { setShowGoalModal(false); setEditingGoal(null); }} />}
       {showExpenseModal && <ExpenseModal expense={editingExpense} onSave={handleSaveExpense} onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />}
-      {showIncomeModal && <IncomeProfileModal profile={editingIncome} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
+      {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
       {showLifeEventModal && <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
       {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}

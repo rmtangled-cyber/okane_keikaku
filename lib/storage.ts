@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, UserProfile } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -189,6 +189,19 @@ export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
     const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageSimPlan) : null;
+  } catch { return null; }
+}
+
+// User Profile (single doc per user)
+export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "userProfile", "default");
+  await setDoc(ref, stripUndefined(profile));
+}
+export async function loadUserProfile(): Promise<UserProfile | null> {
+  try {
+    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "userProfile", "default");
+    const snap = await getDoc(ref);
+    return snap.exists() ? (snap.data() as UserProfile) : null;
   } catch { return null; }
 }
 

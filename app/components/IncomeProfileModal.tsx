@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { IncomeProfile } from "@/lib/types";
+import { IncomeProfile, UserProfile } from "@/lib/types";
 import { PREFECTURES, calcTakeHome } from "@/lib/taxCalc";
 import { X } from "lucide-react";
 
 interface Props {
   profile?: IncomeProfile | null;
+  userProfile?: UserProfile | null;
   onSave: (p: Omit<IncomeProfile, "id" | "updatedAt">) => void;
   onClose: () => void;
 }
 
-export default function IncomeProfileModal({ profile, onSave, onClose }: Props) {
+export default function IncomeProfileModal({ profile, userProfile, onSave, onClose }: Props) {
   const [name, setName] = useState("");
   const [grossAnnual, setGrossAnnual] = useState("");
   const [bonusAnnual, setBonusAnnual] = useState("");
@@ -23,6 +24,15 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   const [fromMode, setFromMode] = useState<"year" | "age">("year");
   const [untilMode, setUntilMode] = useState<"age" | "year">("age");
   const [note, setNote] = useState("");
+
+  const currentYear = new Date().getFullYear();
+
+  // プロフィールから扶養家族数を計算
+  function calcDependentsFromProfile(up: UserProfile): number {
+    const spouse = up.familyMembers.find(m => m.type === "spouse") ? 1 : 0;
+    const childCount = up.familyMembers.filter(m => m.type === "child").length;
+    return spouse + childCount;
+  }
 
   useEffect(() => {
     if (profile) {
@@ -36,10 +46,14 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
       setActiveFromYear(profile.activeFromYear ? String(profile.activeFromYear) : "");
       setActiveUntilAge(profile.activeUntilAge ? String(profile.activeUntilAge) : "");
       setNote(profile.note ?? "");
+    } else if (userProfile) {
+      // 新規追加時: プロフィールからデフォルト値を引用
+      setPrefecture(userProfile.prefecture);
+      setAge(String(currentYear - userProfile.birthYear));
+      setDependents(String(calcDependentsFromProfile(userProfile)));
     }
-  }, [profile]);
+  }, [profile, userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentYear = new Date().getFullYear();
   const grossAnnualNum = parseFloat(grossAnnual) || 0;
   const grossMonthlyNum = Math.round(grossAnnualNum / 12);
   const bonusAnnualNum = parseFloat(bonusAnnual) || 0;
@@ -53,6 +67,11 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
   const handleFromChange = (val: string) => {
     if (fromMode === "year") {
       setActiveFromYear(val);
+      // プロフィールの生年があれば適用開始年齢を自動更新
+      if (userProfile && val) {
+        const yr = parseInt(val);
+        if (!isNaN(yr)) setAge(String(yr - userProfile.birthYear));
+      }
     } else {
       const a = parseInt(val);
       setActiveFromYear(isNaN(a) ? "" : String(currentYear + (a - ageNum)));
@@ -97,9 +116,14 @@ export default function IncomeProfileModal({ profile, onSave, onClose }: Props) 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {profile ? "収入を編集" : "収入を追加"}
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {profile ? "収入を編集" : "収入を追加"}
+            </h2>
+            {!profile && userProfile && (
+              <p className="text-xs text-teal-600 mt-0.5">プロフィールから都道府県・年齢・扶養を引用しました</p>
+            )}
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <X size={18} />
           </button>
