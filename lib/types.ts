@@ -113,6 +113,8 @@ export interface FamilyMember {
   type: "spouse" | "child";
   name?: string;
   birthYear: number;
+  isDependent?: boolean;      // spouse only: 扶養家族かどうか
+  dependentOf?: "self" | "spouse"; // child only: どちらの親の扶養か
 }
 
 export interface UserProfile {
@@ -128,6 +130,7 @@ export interface UserProfile {
 export interface IncomeProfile {
   id: string;
   name: string;            // ラベル（例: "現職"）
+  memberId?: "self" | "spouse"; // 誰の収入か（省略=自分）
   grossMonthly: number;    // 額面月収（円）= grossAnnual/12 で自動計算
   grossAnnual?: number;    // 年収・基本給（ボーナス除く、円）
   bonusAnnual?: number;    // 年間ボーナス額面（円）

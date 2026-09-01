@@ -35,26 +35,23 @@ export default function UserProfileTab({ profile, onSave }: Props) {
 
   function setSpouse(exists: boolean) {
     if (exists && !spouse) {
-      setFamilyMembers(prev => [...prev, { type: "spouse", birthYear: currentYear - 30 }]);
+      setFamilyMembers(prev => [...prev, { type: "spouse", birthYear: currentYear - 30, isDependent: false }]);
     } else if (!exists) {
       setFamilyMembers(prev => prev.filter(m => m.type !== "spouse"));
     }
   }
 
-  function updateSpouseBirthYear(val: string) {
-    const yr = parseInt(val) || currentYear - 30;
-    setFamilyMembers(prev => prev.map(m => m.type === "spouse" ? { ...m, birthYear: yr } : m));
+  function updateSpouse(patch: Partial<FamilyMember>) {
+    setFamilyMembers(prev => prev.map(m => m.type === "spouse" ? { ...m, ...patch } : m));
   }
 
   function addChild() {
-    setFamilyMembers(prev => [...prev, { type: "child", birthYear: currentYear - 5 }]);
+    setFamilyMembers(prev => [...prev, { type: "child", birthYear: currentYear - 5, dependentOf: "self" }]);
   }
 
-  function updateChildBirthYear(idx: number, val: string) {
-    const yr = parseInt(val) || currentYear - 5;
-    const childIdx = familyMembers.filter(m => m.type === "child").indexOf(children[idx]);
-    const globalIdx = familyMembers.indexOf(familyMembers.filter(m => m.type === "child")[childIdx]);
-    setFamilyMembers(prev => prev.map((m, i) => i === globalIdx ? { ...m, birthYear: yr } : m));
+  function updateChild(idx: number, patch: Partial<FamilyMember>) {
+    const target = children[idx];
+    setFamilyMembers(prev => prev.map(m => m === target ? { ...m, ...patch } : m));
   }
 
   function removeChild(idx: number) {
@@ -76,7 +73,10 @@ export default function UserProfileTab({ profile, onSave }: Props) {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const totalDependents = (spouse ? 1 : 0) + children.length;
+  const spouseIsDependent = spouse?.isDependent ?? false;
+  const selfDependents = (spouseIsDependent ? 1 : 0) + children.filter(c => c.dependentOf !== "spouse").length;
+  const spouseDependents = children.filter(c => c.dependentOf === "spouse").length;
+  const hasSpouse = !!spouse;
 
   return (
     <div className="space-y-6">
@@ -89,12 +89,12 @@ export default function UserProfileTab({ profile, onSave }: Props) {
             <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">基本情報</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">名前（任意）</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ニックネーム（任意）</label>
                 <input
                   type="text"
                   value={displayName}
                   onChange={e => setDisplayName(e.target.value)}
-                  placeholder="例: 田中 太郎"
+                  placeholder="例: タロウ"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
@@ -131,7 +131,7 @@ export default function UserProfileTab({ profile, onSave }: Props) {
             <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase tracking-wide">家族構成</h3>
             <div className="space-y-3">
               {/* 配偶者 */}
-              <div className="flex items-center gap-4 bg-gray-50 rounded-xl px-4 py-3">
+              <div className="flex flex-wrap items-center gap-4 bg-gray-50 rounded-xl px-4 py-3">
                 <label className="flex items-center gap-2 cursor-pointer min-w-[80px]">
                   <input
                     type="checkbox"
@@ -142,45 +142,71 @@ export default function UserProfileTab({ profile, onSave }: Props) {
                   <span className="text-sm font-medium text-gray-700">配偶者</span>
                 </label>
                 {spouse && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">生年:</span>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={spouse.birthYear}
-                        onChange={e => updateSpouseBirthYear(e.target.value)}
-                        min={1940}
-                        max={currentYear - 15}
-                        className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-8"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">年</span>
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">生年:</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={spouse.birthYear}
+                          onChange={e => updateSpouse({ birthYear: parseInt(e.target.value) || currentYear - 30 })}
+                          min={1940}
+                          max={currentYear - 15}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-8"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">年</span>
+                      </div>
+                      <span className="text-xs text-gray-400">{currentYear - spouse.birthYear}歳</span>
                     </div>
-                    <span className="text-xs text-gray-400">{currentYear - spouse.birthYear}歳</span>
-                  </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={spouseIsDependent}
+                        onChange={e => updateSpouse({ isDependent: e.target.checked })}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      <span className="text-xs text-gray-600">自分の扶養に入る</span>
+                    </label>
+                  </>
                 )}
               </div>
 
               {/* 子供 */}
               {children.map((child, idx) => (
-                <div key={idx} className="flex items-center gap-4 bg-gray-50 rounded-xl px-4 py-3">
-                  <span className="text-sm font-medium text-gray-700 min-w-[80px]">子供 {idx + 1}</span>
-                  <div className="flex items-center gap-2 flex-1">
+                <div key={idx} className="flex flex-wrap items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                  <span className="text-sm font-medium text-gray-700 min-w-[64px]">子供 {idx + 1}</span>
+                  <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">生年:</span>
                     <div className="relative">
                       <input
                         type="number"
                         value={child.birthYear}
-                        onChange={e => updateChildBirthYear(idx, e.target.value)}
+                        onChange={e => updateChild(idx, { birthYear: parseInt(e.target.value) || currentYear })}
                         min={currentYear - 30}
-                        max={currentYear}
+                        max={currentYear + 10}
                         className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-teal-500 pr-8"
                       />
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">年</span>
                     </div>
-                    <span className="text-xs text-gray-400">{currentYear - child.birthYear}歳</span>
+                    {child.birthYear <= currentYear ? (
+                      <span className="text-xs text-gray-400">{currentYear - child.birthYear}歳</span>
+                    ) : (
+                      <span className="text-xs text-teal-500">{child.birthYear - currentYear}年後に生まれる予定</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-500">扶養:</span>
+                    <select
+                      value={child.dependentOf ?? "self"}
+                      onChange={e => updateChild(idx, { dependentOf: e.target.value as "self" | "spouse" })}
+                      className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="self">自分</option>
+                      {hasSpouse && <option value="spouse">配偶者</option>}
+                    </select>
                   </div>
                   <button type="button" onClick={() => removeChild(idx)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    className="ml-auto p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -195,10 +221,15 @@ export default function UserProfileTab({ profile, onSave }: Props) {
           </div>
 
           {/* サマリー */}
-          {totalDependents > 0 && (
-            <div className="bg-teal-50 rounded-xl px-4 py-3 text-sm text-teal-700">
-              扶養家族数: <span className="font-semibold">{totalDependents}人</span>
-              <span className="ml-2 text-xs text-teal-500">（収入モーダルのデフォルト値に使われます）</span>
+          {(selfDependents > 0 || spouseDependents > 0) && (
+            <div className="bg-teal-50 rounded-xl px-4 py-3 text-sm text-teal-700 space-y-1">
+              <div>
+                自分の扶養家族: <span className="font-semibold">{selfDependents}人</span>
+                {spouseDependents > 0 && (
+                  <span className="ml-3">配偶者の扶養家族: <span className="font-semibold">{spouseDependents}人</span></span>
+                )}
+              </div>
+              <p className="text-xs text-teal-500">収入プロファイルの手取り計算に使われます</p>
             </div>
           )}
 
