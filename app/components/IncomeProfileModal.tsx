@@ -66,7 +66,10 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
 
   const birthYear = getBirthYear();
   const fromYearNum = parseInt(activeFromYear) || 0;
-  const ageNum = fromYearNum > 0 ? fromYearNum - birthYear : currentYear - birthYear;
+  // age は常に currentYear 基準で保存（シミュレーションで age + (year - baseYear) として使う）
+  const ageNow = currentYear - birthYear;
+  const ageAtFrom = fromYearNum > 0 ? fromYearNum - birthYear : ageNow;
+  const ageNum = ageNow; // 保存用
   const depsNum = userProfile
     ? calcDependentsForMember(memberId, fromYearNum, userProfile)
     : 0;
@@ -110,10 +113,10 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
   const pensionAvgMonthlyNum = parseInt(pensionAvgMonthly) || 0;
   const pensionResult = calcPension(pensionKoseiMonths, pensionAvgMonthlyNum);
 
-  // salary fields
+  // salary fields — grossAnnual = ボーナス込み年収、bonusAnnual = うちボーナス
   const grossAnnualNum = parseFloat(grossAnnual) || 0;
-  const grossMonthlyNum = Math.round(grossAnnualNum / 12);
   const bonusAnnualNum = parseFloat(bonusAnnual) || 0;
+  const grossMonthlyNum = Math.round((grossAnnualNum - bonusAnnualNum) / 12); // 月次給与（ボーナス除く）
 
   // 実際に保存する年額（年金なら計算値）
   const effectiveAnnual = incomeType === "pension" ? pensionResult.totalAnnual : grossAnnualNum;
@@ -144,8 +147,9 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
     }
   };
 
+  // プレビューは適用開始年時点の年齢で計算（より正確）
   const salaryPreview = incomeType === "salary" && grossMonthlyNum > 0
-    ? calcTakeHome(grossMonthlyNum, prefecture, ageNum, depsNum)
+    ? calcTakeHome(grossMonthlyNum, prefecture, ageAtFrom, depsNum)
     : null;
   const bonusNet = salaryPreview
     ? Math.round(bonusAnnualNum * (salaryPreview.takeHome / (grossMonthlyNum || 1)))
@@ -334,26 +338,26 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    年収・基本給（円）
-                    <span className="ml-1 text-xs font-normal text-gray-400">ボーナス除く</span>
+                    額面年収（円）
+                    <span className="ml-1 text-xs font-normal text-gray-400">ボーナス込み</span>
                   </label>
                   <input
                     type="number"
                     value={grossAnnual}
                     onChange={e => setGrossAnnual(e.target.value)}
-                    placeholder="4200000"
+                    placeholder="5000000"
                     min={0}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                     required
                   />
                   {grossMonthlyNum > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">月換算: ¥{grossMonthlyNum.toLocaleString()}</p>
+                    <p className="text-xs text-gray-400 mt-1">月次給与: ¥{grossMonthlyNum.toLocaleString()}</p>
                   )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ボーナス年額（円）
-                    <span className="ml-1 text-xs font-normal text-gray-400">任意・額面</span>
+                    うちボーナス（円）
+                    <span className="ml-1 text-xs font-normal text-gray-400">任意・年額</span>
                   </label>
                   <input
                     type="number"
@@ -363,6 +367,9 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
                     min={0}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
+                  {bonusAnnualNum > 0 && grossAnnualNum > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">基本給: ¥{(grossAnnualNum - bonusAnnualNum).toLocaleString()}</p>
+                  )}
                 </div>
               </div>
 
@@ -456,7 +463,7 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
                 <p className="text-xs text-gray-500 mb-0.5">
                   年齢（{fromYearNum > 0 ? `${fromYearNum}年時点` : "現在"}）
                 </p>
-                <p className="font-semibold text-gray-800">{ageNum} 歳</p>
+                <p className="font-semibold text-gray-800">{ageAtFrom} 歳</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-0.5">

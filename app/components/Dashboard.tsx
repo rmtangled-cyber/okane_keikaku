@@ -81,19 +81,30 @@ type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支"
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
-function getIncomeForYear(profiles: IncomeProfile[], year: number, baseYear: number = new Date().getFullYear()): IncomeProfile | null {
-  const candidates = profiles.filter(p => {
-    if (p.activeFromYear && p.activeFromYear > year) return false;
+// 各 memberId (self/spouse) ごとに最新の有効プロファイルを1つずつ返す
+// age は currentYear 時点での年齢として保存されている前提
+function getActiveProfilesForYear(profiles: IncomeProfile[], year: number, baseYear: number): IncomeProfile[] {
+  const groups = new Map<string, IncomeProfile>();
+  for (const p of profiles) {
+    if (p.activeFromYear && p.activeFromYear > year) continue;
     if (p.activeUntilAge) {
-      const ageAtYear = p.age + (year - baseYear);
-      if (ageAtYear > p.activeUntilAge) return false;
+      const ageAtYear = p.age + (year - baseYear); // age = baseYear時点の年齢
+      if (ageAtYear > p.activeUntilAge) continue;
     }
-    return true;
-  });
-  if (candidates.length === 0) return null;
-  return candidates.reduce((best, p) =>
-    (p.activeFromYear ?? 0) >= (best.activeFromYear ?? 0) ? p : best
-  );
+    const key = p.memberId ?? "self";
+    const existing = groups.get(key);
+    if (!existing || (p.activeFromYear ?? 0) >= (existing.activeFromYear ?? 0)) {
+      groups.set(key, p);
+    }
+  }
+  return [...groups.values()];
+}
+
+// 後方互換: 収支タブ等で単一プロファイルが必要な場合
+function getIncomeForYear(profiles: IncomeProfile[], year: number, baseYear: number = new Date().getFullYear()): IncomeProfile | null {
+  const active = getActiveProfilesForYear(profiles, year, baseYear);
+  const self = active.find(p => (p.memberId ?? "self") === "self");
+  return self ?? active[0] ?? null;
 }
 
 function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], assets: Asset[]): number {
@@ -198,17 +209,26 @@ function simulate(
   for (let i = 0; i <= yearsToProject; i++) {
     const year = startYear + i;
 
-    // Income
-    const profile = getIncomeForYear(profiles, year, startYear);
-    const grossMonthly = profile
-      ? (profile.grossAnnual ? Math.round(profile.grossAnnual / 12) : profile.grossMonthly)
-      : 0;
-    const takeHome = profile
-      ? calcTakeHome(grossMonthly, profile.prefecture, profile.age + i, profile.dependents).takeHome
-      : 0;
-    const bonusTakeHome = (profile?.bonusAnnual && grossMonthly > 0)
-      ? Math.round(profile.bonusAnnual * (takeHome / grossMonthly))
-      : 0;
+    // Income — 全 memberId 分を合算
+    const activeProfiles = getActiveProfilesForYear(profiles, year, startYear);
+    let takeHome = 0;
+    let bonusTakeHome = 0;
+    const incomeItemsFromProfiles: BreakdownItem[] = [];
+    for (const p of activeProfiles) {
+      // grossAnnual = ボーナス込み年収、bonusAnnual = うちボーナス額
+      const baseAnnual = p.grossAnnual ?? (p.grossMonthly * 12);
+      const bonusAnnual = p.bonusAnnual ?? 0;
+      // 月次給与（ボーナス除く）で社保・税計算
+      const monthlyBase = Math.round((baseAnnual - bonusAnnual) / 12);
+      const result = calcTakeHome(monthlyBase, p.prefecture, p.age + (year - startYear), p.dependents);
+      const pTakeHome = result.takeHome;
+      const pBonus = bonusAnnual > 0 && monthlyBase > 0
+        ? Math.round(bonusAnnual * (pTakeHome / monthlyBase))
+        : 0;
+      takeHome += pTakeHome;
+      bonusTakeHome += pBonus;
+      incomeItemsFromProfiles.push({ label: p.name, monthly: pTakeHome + Math.round(pBonus / 12) });
+    }
 
     // Fixed expenses
     const expenseTotal = expenses.reduce((s, e) => s + e.amount, 0);
@@ -236,8 +256,9 @@ function simulate(
     // One-time events this year
     const oneTime = lifeEvents.filter(e => e.year === year).reduce((s, e) => s + e.oneTimeAmount, 0);
 
-    const bonusMonthlyEquiv = bonusTakeHome / 12;
-    const monthlyCashFlow = takeHome + bonusMonthlyEquiv - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
+    // takeHome には既にボーナス手取り月換算が含まれている（incomeItemsFromProfiles 側で合算済み）
+    const totalTakeHomeMonthly = takeHome + bonusTakeHome / 12;
+    const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
 
@@ -245,9 +266,7 @@ function simulate(
 
     const yearEvents = lifeEvents.filter(e => e.year === year);
 
-    const incomeItems: BreakdownItem[] = [];
-    if (profile && takeHome > 0) incomeItems.push({ label: profile.name, monthly: takeHome });
-    if (bonusTakeHome > 0) incomeItems.push({ label: "ボーナス（手取概算）", monthly: Math.round(bonusTakeHome / 12) });
+    const incomeItems: BreakdownItem[] = [...incomeItemsFromProfiles];
     if (cumulativeMonthly > 0) incomeItems.push({ label: "ライフイベント", monthly: cumulativeMonthly });
 
     const expenseItems: BreakdownItem[] = [];
@@ -261,7 +280,7 @@ function simulate(
       year,
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
-      annualIncome: Math.round((takeHome + bonusMonthlyEquiv + Math.max(0, cumulativeMonthly)) * 12),
+      annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly)) * 12),
       annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
       incomeItems,
