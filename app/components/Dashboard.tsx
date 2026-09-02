@@ -1181,7 +1181,7 @@ export default function Dashboard() {
                 年齢別収入・ローン・保険・ライフイベントを考慮した試算
                 {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
               </p>
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
                 <AreaChart data={simData}>
                   <defs>
                     <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1190,7 +1190,31 @@ export default function Dashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`} interval={4} />
+                  <XAxis dataKey="year" interval={4} height={userProfile && userProfile.familyMembers.length > 0 ? 14 + 11 * (1 + userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 30}
+                    tick={(props: { x: string | number; y: string | number; payload: { value: number } }) => {
+                      const x = Number(props.x);
+                      const y = Number(props.y);
+                      const { payload } = props;
+                      const year = payload.value;
+                      const lines: { key: string; age: number }[] = [];
+                      if (userProfile) {
+                        lines.push({ key: userProfile.displayName ?? "自分", age: year - userProfile.birthYear });
+                        const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
+                        if (spouse) lines.push({ key: "配偶者", age: year - spouse.birthYear });
+                        userProfile.familyMembers.filter(m => m.type === "child").forEach((c, i) => {
+                          if (year >= c.birthYear) lines.push({ key: `子${i + 1}`, age: year - c.birthYear });
+                        });
+                      }
+                      return (
+                        <g transform={`translate(${x},${y})`}>
+                          <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill="#6b7280">{year}年</text>
+                          {lines.map((l, i) => (
+                            <text key={l.key} x={0} y={0} dy={12 + 11 * (i + 1)} textAnchor="middle" fontSize={8} fill="#9ca3af">{l.age}歳</text>
+                          ))}
+                        </g>
+                      );
+                    }}
+                  />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
                   } width={52} />
@@ -1261,9 +1285,9 @@ export default function Dashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                             <div className="text-xs text-teal-700 mt-0.5">
-                              {fromYearLabel}（{p.age}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""}
+                              {fromYearLabel}（{p.age + ((p.activeFromYear ?? currentYear) - currentYear)}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""}
                               {" "}年収 ¥{(p.grossAnnual ?? p.grossMonthly * 12).toLocaleString()}
-                              {p.bonusAnnual ? ` + ボーナス ¥${p.bonusAnnual.toLocaleString()}` : ""}
+                              {p.bonusAnnual ? ` うちボーナス ¥${p.bonusAnnual.toLocaleString()}` : ""}
                             </div>
                           </div>
                           <div className="flex gap-1.5 shrink-0">
