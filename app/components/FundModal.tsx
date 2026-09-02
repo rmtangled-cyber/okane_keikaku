@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { FundHolding, AccountType, calcFutureValue } from "@/lib/types";
-import { X } from "lucide-react";
+import { fetchFundQuote } from "@/lib/marketData";
+import { X, RefreshCw, Loader2 } from "lucide-react";
 
 const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function FundModal({ fund, onSave, onClose }: Props) {
+  const [fundCode, setFundCode] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("NISA（つみたて投資枠）");
   const [purchaseAmount, setPurchaseAmount] = useState("");
@@ -23,9 +25,13 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
   const [monthlyContrib, setMonthlyContrib] = useState("");
   const [startDate, setStartDate] = useState("");
   const [note, setNote] = useState("");
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [latestNav, setLatestNav] = useState<number | null>(null);
 
   useEffect(() => {
     if (fund) {
+      setFundCode(fund.fundCode ?? "");
       setName(fund.name);
       setAccountType(fund.accountType);
       setPurchaseAmount(String(fund.purchaseAmount));
@@ -36,6 +42,21 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
       setNote(fund.note ?? "");
     }
   }, [fund]);
+
+  async function lookupFund(code: string) {
+    if (!code.trim()) return;
+    setFetching(true);
+    setFetchError(null);
+    setLatestNav(null);
+    const result = await fetchFundQuote(code);
+    setFetching(false);
+    if (result) {
+      if (!name) setName(result.name);
+      setLatestNav(result.price);
+    } else {
+      setFetchError("取得できませんでした。ファンドコードを確認してください。");
+    }
+  }
 
   const cv = parseFloat(currentValue) || 0;
   const er = parseFloat(expectedReturn) || 0;
@@ -49,6 +70,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
     const cv2 = parseFloat(currentValue);
     if (!name || isNaN(pa) || isNaN(cv2)) return;
     onSave({
+      fundCode: fundCode || undefined,
       name, accountType,
       purchaseAmount: pa,
       currentValue: cv2,
@@ -71,6 +93,45 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          {/* Fund code lookup */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ファンドコード
+              <span className="ml-1 text-xs font-normal text-gray-400">8桁英数字 例: 03311187</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={fundCode}
+                onChange={e => { setFundCode(e.target.value); setFetchError(null); setLatestNav(null); }}
+                onBlur={e => lookupFund(e.target.value)}
+                placeholder="03311187"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={() => lookupFund(fundCode)}
+                disabled={fetching || !fundCode}
+                className="flex items-center gap-1 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-40 transition-colors"
+              >
+                {fetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                取得
+              </button>
+            </div>
+            {fetching && (
+              <div className="flex items-center gap-1 mt-1 text-xs text-indigo-500">
+                <Loader2 size={11} className="animate-spin" /> 取得中…
+              </div>
+            )}
+            {fetchError && <div className="mt-1 text-xs text-orange-500">{fetchError}</div>}
+            {latestNav !== null && (
+              <div className="mt-1.5 bg-indigo-50 rounded-lg px-3 py-1.5 text-xs text-indigo-700">
+                最新基準価額: <span className="font-bold">¥{latestNav.toLocaleString()}</span>（参考値）
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">ファンド名</label>
             <input
