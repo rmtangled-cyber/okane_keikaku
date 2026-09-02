@@ -13,11 +13,16 @@ interface Props {
 
 export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const grossMonthly = profile.grossAnnual ? Math.round(profile.grossAnnual / 12) : profile.grossMonthly;
-  const result = calcTakeHome(grossMonthly, profile.prefecture, profile.age, profile.dependents);
-  const annualBase = profile.grossAnnual ?? profile.grossMonthly * 12;
   const bonusAnnual = profile.bonusAnnual ?? 0;
-  const bonusNet = bonusAnnual > 0 ? Math.round(bonusAnnual * (result.takeHome / (grossMonthly || 1))) : 0;
+  const annualBase = profile.grossAnnual ?? profile.grossMonthly * 12; // ボーナス込み年収
+  // 月次給与 = (年収 - ボーナス) / 12 で社保・税計算
+  const grossMonthly = profile.grossAnnual
+    ? Math.round((profile.grossAnnual - bonusAnnual) / 12)
+    : profile.grossMonthly;
+  const result = calcTakeHome(grossMonthly, profile.prefecture, profile.age, profile.dependents);
+  const bonusNet = bonusAnnual > 0 && grossMonthly > 0
+    ? Math.round(bonusAnnual * (result.takeHome / grossMonthly))
+    : 0;
   const annualTakeHome = result.takeHome * 12 + bonusNet;
 
   const rows: { label: string; amount: number; color: string }[] = [
@@ -50,7 +55,7 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
             </div>
             <div className="text-2xl font-bold text-gray-900">¥{annualBase.toLocaleString()}<span className="text-sm font-normal text-gray-400">/年</span></div>
             {bonusAnnual > 0 && (
-              <div className="text-xs text-teal-600 mt-0.5">+ ボーナス ¥{bonusAnnual.toLocaleString()}/年</div>
+              <div className="text-xs text-teal-600 mt-0.5">うちボーナス ¥{bonusAnnual.toLocaleString()}/年</div>
             )}
             <div className="text-xs text-gray-500 mt-0.5">{profile.prefecture} · {profile.age}歳 · 扶養{profile.dependents}人</div>
           </div>
