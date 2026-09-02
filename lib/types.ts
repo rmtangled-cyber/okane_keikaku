@@ -53,6 +53,7 @@ export interface StockHolding {
 export interface FundHolding {
   id: string;
   name: string;                  // ファンド名
+  fundCode?: string;             // ファンドコード（8桁英数字、任意）
   accountType: AccountType;
   purchaseAmount: number;        // 取得金額合計（円）
   currentValue: number;          // 現在評価額（円）
