@@ -126,11 +126,12 @@ export interface UserProfile {
   updatedAt: string;
 }
 
-// 収入プロファイル（給与）
+// 収入プロファイル（給与・年金）
 export interface IncomeProfile {
   id: string;
   name: string;            // ラベル（例: "現職"）
   memberId?: "self" | "spouse"; // 誰の収入か（省略=自分）
+  incomeType?: "salary" | "pension"; // 収入の種類（省略=給与）
   grossMonthly: number;    // 額面月収（円）= grossAnnual/12 で自動計算
   grossAnnual?: number;    // 年収・基本給（ボーナス除く、円）
   bonusAnnual?: number;    // 年間ボーナス額面（円）
@@ -139,6 +140,9 @@ export interface IncomeProfile {
   dependents: number;      // 扶養家族数
   activeFromYear?: number; // 適用開始年（省略=現在から適用）
   activeUntilAge?: number; // 適用終了年齢（省略=無期限）
+  // 年金専用フィールド
+  pensionKoseiMonths?: number;  // 厚生年金加入月数
+  pensionAvgMonthly?: number;   // 厚生年金期間の平均標準報酬月額（円）
   note?: string;
   updatedAt: string;
 }
