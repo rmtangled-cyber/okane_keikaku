@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { LifeEvent, LifeEventType } from "@/lib/types";
 import { X } from "lucide-react";
 
@@ -15,25 +15,14 @@ interface Props {
 }
 
 export default function LifeEventModal({ event, onSave, onClose }: Props) {
-  const [title, setTitle] = useState("");
-  const [year, setYear] = useState("");
-  const [endYear, setEndYear] = useState("");
-  const [type, setType] = useState<LifeEventType>("収入変化");
-  const [monthlyChange, setMonthlyChange] = useState("");
-  const [oneTime, setOneTime] = useState("");
-  const [note, setNote] = useState("");
+  const [title, setTitle] = useState(() => event?.title ?? "");
+  const [year, setYear] = useState(() => event ? String(event.year) : "");
+  const [endYear, setEndYear] = useState(() => event?.endYear ? String(event.endYear) : "");
+  const [type, setType] = useState<LifeEventType>(() => event?.type ?? "収入変化");
+  const [monthlyChange, setMonthlyChange] = useState(() => event ? String(event.monthlyAmountChange) : "");
+  const [oneTime, setOneTime] = useState(() => event ? String(event.oneTimeAmount) : "");
+  const [note, setNote] = useState(() => event?.note ?? "");
 
-  useEffect(() => {
-    if (event) {
-      setTitle(event.title);
-      setYear(String(event.year));
-      setEndYear(event.endYear ? String(event.endYear) : "");
-      setType(event.type);
-      setMonthlyChange(String(event.monthlyAmountChange));
-      setOneTime(String(event.oneTimeAmount));
-      setNote(event.note ?? "");
-    }
-  }, [event]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

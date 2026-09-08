@@ -1382,7 +1382,7 @@ export default function Dashboard() {
       {showGoalModal && <GoalModal goal={editingGoal} totalAssets={grandTotal} onSave={handleSaveGoal} onClose={() => { setShowGoalModal(false); setEditingGoal(null); }} />}
       {showExpenseModal && <ExpenseModal expense={editingExpense} onSave={handleSaveExpense} onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />}
       {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
-      {showLifeEventModal && <LifeEventModal event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
+      {showLifeEventModal && <LifeEventModal key={editingLifeEvent?.id ?? "new"} event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
       {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
