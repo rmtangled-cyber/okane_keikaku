@@ -216,6 +216,7 @@ export interface LifeEvent {
   id: string;
   title: string;
   year: number;
+  endYear?: number;            // 月次影響の終了年（省略=永続）
   type: LifeEventType;
   monthlyAmountChange: number; // 月次収支への継続的影響（+/-）
   oneTimeAmount: number;       // 一時金（0なら無し）
