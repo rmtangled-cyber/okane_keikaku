@@ -20,10 +20,28 @@ interface Props {
   onDiscardDraft?: (id: string) => void;
 }
 
-export default function LifeEventCard({ event, onEdit, onDelete, onConfirmDraft, onDiscardDraft }: Props) {
+function EventMeta({ event }: { event: LifeEvent }) {
   const hasMonthly = event.monthlyAmountChange !== 0;
   const hasOneTime = event.oneTimeAmount !== 0;
+  const yearLabel = event.endYear ? `${event.year}年〜${event.endYear}年` : `${event.year}年〜`;
+  return (
+    <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+      <span className="font-medium">{yearLabel}</span>
+      {hasMonthly && (
+        <span className={event.monthlyAmountChange > 0 ? "text-green-600" : "text-red-600"}>
+          月次 {event.monthlyAmountChange > 0 ? "+" : ""}{event.monthlyAmountChange.toLocaleString()}円
+        </span>
+      )}
+      {hasOneTime && (
+        <span className={event.oneTimeAmount > 0 ? "text-blue-600" : "text-orange-600"}>
+          一時金 {event.oneTimeAmount > 0 ? "+" : ""}{event.oneTimeAmount.toLocaleString()}円
+        </span>
+      )}
+    </div>
+  );
+}
 
+export default function LifeEventCard({ event, onEdit, onDelete, onConfirmDraft, onDiscardDraft }: Props) {
   if (event.isDraft) {
     return (
       <div className="bg-amber-50 rounded-xl border border-dashed border-amber-300 p-4 flex items-center gap-3">
@@ -38,19 +56,7 @@ export default function LifeEventCard({ event, onEdit, onDelete, onConfirmDraft,
             </span>
             <span className="text-sm font-medium text-gray-700">{event.title}</span>
           </div>
-          <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-            <span className="font-medium">{event.year}年〜</span>
-            {hasMonthly && (
-              <span className={event.monthlyAmountChange > 0 ? "text-green-600" : "text-red-600"}>
-                月次 {event.monthlyAmountChange > 0 ? "+" : ""}{event.monthlyAmountChange.toLocaleString()}円
-              </span>
-            )}
-            {hasOneTime && (
-              <span className={event.oneTimeAmount > 0 ? "text-blue-600" : "text-orange-600"}>
-                一時金 {event.oneTimeAmount > 0 ? "+" : ""}{event.oneTimeAmount.toLocaleString()}円
-              </span>
-            )}
-          </div>
+          <EventMeta event={event} />
           {event.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{event.note}</p>}
         </div>
         <div className="flex gap-1 shrink-0">
@@ -85,19 +91,7 @@ export default function LifeEventCard({ event, onEdit, onDelete, onConfirmDraft,
           </span>
           <span className="text-sm font-medium text-gray-900">{event.title}</span>
         </div>
-        <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-          <span className="font-medium">{event.year}年〜</span>
-          {hasMonthly && (
-            <span className={event.monthlyAmountChange > 0 ? "text-green-600" : "text-red-600"}>
-              月次 {event.monthlyAmountChange > 0 ? "+" : ""}{event.monthlyAmountChange.toLocaleString()}円
-            </span>
-          )}
-          {hasOneTime && (
-            <span className={event.oneTimeAmount > 0 ? "text-blue-600" : "text-orange-600"}>
-              一時金 {event.oneTimeAmount > 0 ? "+" : ""}{event.oneTimeAmount.toLocaleString()}円
-            </span>
-          )}
-        </div>
+        <EventMeta event={event} />
         {event.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{event.note}</p>}
       </div>
       <div className="flex gap-1 shrink-0">

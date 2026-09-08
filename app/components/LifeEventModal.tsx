@@ -17,6 +17,7 @@ interface Props {
 export default function LifeEventModal({ event, onSave, onClose }: Props) {
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
+  const [endYear, setEndYear] = useState("");
   const [type, setType] = useState<LifeEventType>("収入変化");
   const [monthlyChange, setMonthlyChange] = useState("");
   const [oneTime, setOneTime] = useState("");
@@ -26,6 +27,7 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
     if (event) {
       setTitle(event.title);
       setYear(String(event.year));
+      setEndYear(event.endYear ? String(event.endYear) : "");
       setType(event.type);
       setMonthlyChange(String(event.monthlyAmountChange));
       setOneTime(String(event.oneTimeAmount));
@@ -36,9 +38,11 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title) return;
+    const parsedEndYear = endYear ? parseInt(endYear) : undefined;
     onSave({
       title,
       year: parseInt(year) || new Date().getFullYear(),
+      endYear: parsedEndYear,
       type,
       monthlyAmountChange: parseFloat(monthlyChange) || 0,
       oneTimeAmount: parseFloat(oneTime) || 0,
@@ -93,6 +97,22 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
                 {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              月次影響の終了年
+              <span className="ml-1 text-xs font-normal text-gray-400">省略 = 永続・一時金のみなら不要</span>
+            </label>
+            <input
+              type="number"
+              value={endYear}
+              onChange={e => setEndYear(e.target.value)}
+              placeholder="例: 2045（子の教育費終了など）"
+              min={2020}
+              max={2100}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
           </div>
 
           <div>

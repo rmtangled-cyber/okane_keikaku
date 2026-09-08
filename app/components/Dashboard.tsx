@@ -248,9 +248,9 @@ function simulate(
     // Mortgage sim payment (applies from startYear for mortgageTermYears)
     const mortgagePayment = i < mortgageTermYears ? (mortgagePaymentByYear[i] ?? 0) : 0;
 
-    // Life events cumulative monthly
+    // Life events cumulative monthly（endYearがある場合はその年まで）
     const cumulativeMonthly = lifeEvents
-      .filter(e => e.year <= year)
+      .filter(e => e.year <= year && (e.endYear === undefined || e.endYear >= year))
       .reduce((s, e) => s + e.monthlyAmountChange, 0);
 
     // One-time events this year
