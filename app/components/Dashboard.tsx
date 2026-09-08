@@ -458,9 +458,11 @@ export default function Dashboard() {
 
   // ── Life Plan Simulation ──────────────────────────────
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
+  const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
+  const simYears = Math.max(10, 90 - selfAge);
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
-    lifeEvents, weightedReturn, currentYear, 40, mortgageSimPlan
+    lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan
   );
 
   // ── CRUD callbacks ────────────────────────────────────
@@ -1175,7 +1177,7 @@ export default function Dashboard() {
           <div className="space-y-5">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（40年）
+                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜90歳）
               </h3>
               <p className="text-xs text-gray-400 mb-4">
                 年齢別収入・ローン・保険・ライフイベントを考慮した試算
@@ -1241,14 +1243,15 @@ export default function Dashboard() {
               </ResponsiveContainer>
 
               <div className="grid grid-cols-4 gap-2 mt-4">
-                {[10, 20, 30, 40].map(y => {
-                  const pt = simData[y];
+                {[65, 70, 80, 90].map(age => {
+                  const y = age - selfAge;
+                  const pt = y > 0 ? simData[y] : undefined;
                   const v = pt?.assets ?? 0;
                   return (
-                    <div key={y} className="bg-violet-50 rounded-lg p-2 text-center">
-                      <div className="text-xs text-gray-400">{y}年後</div>
+                    <div key={age} className="bg-violet-50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-gray-400">{age}歳時点</div>
                       <div className="text-xs font-bold text-violet-700">
-                        {v >= 100000000 ? `${(v / 100000000).toFixed(1)}億` : `${Math.round(v / 10000)}万`}
+                        {y <= 0 ? "−" : v >= 100000000 ? `${(v / 100000000).toFixed(1)}億` : `${Math.round(v / 10000)}万`}
                       </div>
                     </div>
                   );
