@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, UserProfile } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, UserProfile, PropertyTaxEntry } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -177,6 +177,14 @@ export function saveLifeEvents(items: LifeEvent[]): void {
 }
 export async function loadLifeEvents(): Promise<LifeEvent[]> {
   try { return await fsGetAll<LifeEvent>("lifeEvents"); } catch { return []; }
+}
+
+// Property Tax Entries
+export function savePropertyTaxEntries(items: PropertyTaxEntry[]): void {
+  fsSaveAll("propertyTaxEntries", items).catch(console.error);
+}
+export async function loadPropertyTaxEntries(): Promise<PropertyTaxEntry[]> {
+  try { return await fsGetAll<PropertyTaxEntry>("propertyTaxEntries"); } catch { return []; }
 }
 
 // Mortgage Simulation Plan (single doc per user)
