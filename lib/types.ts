@@ -208,6 +208,53 @@ export interface InsurancePlan {
   updatedAt: string;
 }
 
+// 固定資産税
+export interface PropertyTaxEntry {
+  id: string;
+  name: string;             // 物件名
+  landValue: number;        // 土地の固定資産税評価額（円）
+  landArea: number;         // 土地面積（m²）
+  isResidential: boolean;   // 住宅用地かどうか
+  buildingValue: number;    // 建物の固定資産税評価額（円）
+  hasUrbanTax: boolean;     // 都市計画税あり
+  urbanTaxRate: number;     // 都市計画税率（%）例: 0.3
+  note?: string;
+  updatedAt: string;
+}
+
+export function calcPropertyTax(e: PropertyTaxEntry): {
+  landFixedTax: number; buildingFixedTax: number;
+  landUrbanTax: number; buildingUrbanTax: number;
+  fixedTax: number; urbanTax: number; total: number;
+} {
+  let landFixedBase: number;
+  let landUrbanBase: number;
+  if (e.isResidential && e.landArea > 0) {
+    if (e.landArea <= 200) {
+      landFixedBase = Math.floor(e.landValue / 6);
+      landUrbanBase = Math.floor(e.landValue / 3);
+    } else {
+      const s = 200 / e.landArea;
+      landFixedBase = Math.floor(e.landValue * (s / 6 + (1 - s) / 3));
+      landUrbanBase = Math.floor(e.landValue * (s / 3 + (1 - s) * 2 / 3));
+    }
+  } else {
+    landFixedBase = e.landValue;
+    landUrbanBase = e.landValue;
+  }
+  const fixedTax = Math.floor((landFixedBase + e.buildingValue) * 0.014);
+  const urbanTax = e.hasUrbanTax
+    ? Math.floor((landUrbanBase + e.buildingValue) * (e.urbanTaxRate / 100))
+    : 0;
+  return {
+    landFixedTax: Math.floor(landFixedBase * 0.014),
+    buildingFixedTax: Math.floor(e.buildingValue * 0.014),
+    landUrbanTax: e.hasUrbanTax ? Math.floor(landUrbanBase * (e.urbanTaxRate / 100)) : 0,
+    buildingUrbanTax: e.hasUrbanTax ? Math.floor(e.buildingValue * (e.urbanTaxRate / 100)) : 0,
+    fixedTax, urbanTax, total: fixedTax + urbanTax,
+  };
+}
+
 // ライフイベント
 export type LifeEventType =
   | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";

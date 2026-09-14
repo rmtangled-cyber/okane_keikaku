@@ -9,14 +9,14 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark,
 } from "lucide-react";
 
 import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
-  MortgageSimPlan, UserProfile,
+  MortgageSimPlan, UserProfile, PropertyTaxEntry, calcPropertyTax,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -33,6 +33,7 @@ import {
   getLoanPlans, saveLoanPlans, loadLoanPlans,
   loadMortgageSimPlan,
   saveUserProfile, loadUserProfile,
+  savePropertyTaxEntries, loadPropertyTaxEntries,
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
@@ -59,6 +60,7 @@ import LoanCard from "./LoanCard";
 import LoanModal from "./LoanModal";
 import SolarCalc from "./SolarCalc";
 import MortgageCalc from "./MortgageCalc";
+import PropertyTaxModal from "./PropertyTaxModal";
 import UserProfileTab from "./UserProfileTab";
 import { useAuth } from "@/lib/auth-context";
 
@@ -77,7 +79,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "固定資産税" | "太陽光" | "住宅ローン" | "プロフィール";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -187,6 +189,7 @@ function simulate(
   startYear: number,
   yearsToProject: number,
   mortgageSimPlan?: MortgageSimPlan | null,
+  propertyTaxMonthly?: number,
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -258,7 +261,8 @@ function simulate(
 
     // takeHome には既にボーナス手取り月換算が含まれている（incomeItemsFromProfiles 側で合算済み）
     const totalTakeHomeMonthly = takeHome + bonusTakeHome / 12;
-    const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment + cumulativeMonthly;
+    const propTax = propertyTaxMonthly ?? 0;
+    const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment - propTax + cumulativeMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
 
@@ -274,6 +278,7 @@ function simulate(
     if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
     if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
+    if (propTax > 0) expenseItems.push({ label: "固定資産税", monthly: propTax });
     if (cumulativeMonthly < 0) expenseItems.push({ label: "ライフイベント（支出増）", monthly: Math.abs(cumulativeMonthly) });
 
     points.push({
@@ -281,7 +286,7 @@ function simulate(
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
       annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly)) * 12),
-      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + Math.max(0, -cumulativeMonthly)) * 12),
+      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
       incomeItems,
       expenseItems,
@@ -306,10 +311,13 @@ export default function Dashboard() {
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [propertyTaxEntries, setPropertyTaxEntries] = useState<PropertyTaxEntry[]>([]);
+  const [showPropertyTaxModal, setShowPropertyTaxModal] = useState(false);
+  const [editingPropertyTax, setEditingPropertyTax] = useState<PropertyTaxEntry | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "固定資産税", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -362,6 +370,7 @@ export default function Dashboard() {
     loadLoanPlans().then(setLoanPlans);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
+    loadPropertyTaxEntries().then(setPropertyTaxEntries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
@@ -370,7 +379,7 @@ export default function Dashboard() {
     await clearAllUserData();
     setAssets([]); setStocks([]); setFunds([]); setGoals([]); setSnapshots([]);
     setExpenses([]); setIncomeProfiles([]); setLifeEvents([]); setInsurancePlans([]);
-    setSpendingRecords([]); setLoanPlans([]);
+    setSpendingRecords([]); setLoanPlans([]); setPropertyTaxEntries([]);
   }, []);
 
   // ── Totals ────────────────────────────────────────────
@@ -460,9 +469,11 @@ export default function Dashboard() {
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
   const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
   const simYears = Math.max(10, 90 - selfAge);
+  const propertyTaxAnnual = propertyTaxEntries.reduce((s, e) => s + calcPropertyTax(e).total, 0);
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
-    lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan
+    lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
+    propertyTaxAnnual / 12,
   );
 
   // ── CRUD callbacks ────────────────────────────────────
@@ -635,6 +646,19 @@ export default function Dashboard() {
     setLoanPlans(prev => { const next = prev.filter(l => l.id !== id); saveLoanPlans(next); return next; });
   }, []);
 
+  const handleSavePropertyTax = useCallback((data: Omit<PropertyTaxEntry, "id" | "updatedAt">) => {
+    setPropertyTaxEntries(prev => {
+      const next = editingPropertyTax
+        ? prev.map(e => e.id === editingPropertyTax.id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e)
+        : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
+      savePropertyTaxEntries(next); return next;
+    });
+    setShowPropertyTaxModal(false); setEditingPropertyTax(null);
+  }, [editingPropertyTax]);
+  const handleDeletePropertyTax = useCallback((id: string) => {
+    setPropertyTaxEntries(prev => { const next = prev.filter(e => e.id !== id); savePropertyTaxEntries(next); return next; });
+  }, []);
+
   const handleSnapshot = useCallback(() => {
     const month = new Date().toISOString().slice(0, 7);
     setSnapshots(prev => {
@@ -785,6 +809,7 @@ export default function Dashboard() {
             { key: "収支", icon: <Receipt size={14} /> },
             { key: "家計簿", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
+            { key: "固定資産税", icon: <Landmark size={14} /> },
             { key: "太陽光", icon: <Sun size={14} /> },
             { key: "住宅ローン", icon: <Building2 size={14} /> },
             { key: "プロフィール", icon: <UserRound size={14} /> },
@@ -1158,6 +1183,76 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── 固定資産税 ────────────────────────────────── */}
+        {tab === "固定資産税" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Landmark size={16} className="text-violet-500" /> 固定資産税
+              </h3>
+              <button onClick={() => { setEditingPropertyTax(null); setShowPropertyTaxModal(true); }}
+                className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors">
+                <Plus size={14} /> 追加
+              </button>
+            </div>
+            {propertyTaxEntries.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
+                <Landmark size={32} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm">固定資産税の物件がありません</p>
+                <button onClick={() => { setEditingPropertyTax(null); setShowPropertyTaxModal(true); }}
+                  className="text-xs text-violet-600 hover:underline mt-2">追加する</button>
+              </div>
+            ) : (
+              <>
+                <div className="bg-violet-50 rounded-xl p-4 text-sm text-gray-700">
+                  <p className="font-medium text-violet-800 mb-1">合計（年額）</p>
+                  <p className="text-2xl font-bold text-violet-700">¥{propertyTaxAnnual.toLocaleString("ja-JP")}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">月換算 ¥{Math.round(propertyTaxAnnual / 12).toLocaleString("ja-JP")}</p>
+                </div>
+                <div className="space-y-3">
+                  {propertyTaxEntries.map(entry => {
+                    const r = calcPropertyTax(entry);
+                    return (
+                      <div key={entry.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{entry.name}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {entry.isResidential ? "住宅用地" : "非住宅"} ·
+                              土地 {entry.landArea.toLocaleString()}m² ·
+                              {entry.hasUrbanTax ? ` 都市計画税 ${entry.urbanTaxRate}%あり` : " 都市計画税なし"}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 ml-2">
+                            <button onClick={() => { setEditingPropertyTax(entry); setShowPropertyTaxModal(true); }}
+                              className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
+                              <Pencil size={14} />
+                            </button>
+                            <button onClick={() => { if (confirm(`「${entry.name}」を削除しますか？`)) handleDeletePropertyTax(entry.id); }}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                          <span>土地・固定資産税</span><span className="text-right">¥{r.landFixedTax.toLocaleString()}</span>
+                          <span>建物・固定資産税</span><span className="text-right">¥{r.buildingFixedTax.toLocaleString()}</span>
+                          {entry.hasUrbanTax && <>
+                            <span>土地・都市計画税</span><span className="text-right">¥{r.landUrbanTax.toLocaleString()}</span>
+                            <span>建物・都市計画税</span><span className="text-right">¥{r.buildingUrbanTax.toLocaleString()}</span>
+                          </>}
+                          <span className="font-semibold text-gray-800 pt-1 border-t border-gray-100">合計（年額）</span>
+                          <span className="text-right font-semibold text-gray-800 pt-1 border-t border-gray-100">¥{r.total.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── 太陽光 ───────────────────────────────────── */}
         {tab === "太陽光" && <SolarCalc />}
 
@@ -1387,6 +1482,7 @@ export default function Dashboard() {
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
+      {showPropertyTaxModal && <PropertyTaxModal key={editingPropertyTax?.id ?? "new"} entry={editingPropertyTax} onSave={handleSavePropertyTax} onClose={() => { setShowPropertyTaxModal(false); setEditingPropertyTax(null); }} />}
     </div>
   );
 }
