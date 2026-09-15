@@ -218,6 +218,11 @@ export interface PropertyTaxEntry {
   buildingValue: number;    // 建物の固定資産税評価額（円）
   hasUrbanTax: boolean;     // 都市計画税あり
   urbanTaxRate: number;     // 都市計画税率（%）例: 0.3
+  // 不動産取得税用（任意）
+  floorArea?: number;           // 延床面積（m²）
+  isNewBuilding?: boolean;      // 新築かどうか（未設定=新築）
+  isCertifiedHousing?: boolean; // 長期優良住宅認定
+  buildYear?: number;           // 築年（中古住宅）
   note?: string;
   updatedAt: string;
 }
@@ -253,6 +258,58 @@ export function calcPropertyTax(e: PropertyTaxEntry): {
     buildingUrbanTax: e.hasUrbanTax ? Math.floor(e.buildingValue * (e.urbanTaxRate / 100)) : 0,
     fixedTax, urbanTax, total: fixedTax + urbanTax,
   };
+}
+
+function usedHousingDeduction(buildYear: number): number {
+  if (buildYear >= 1997) return 12000000;
+  if (buildYear >= 1989) return 10000000;
+  if (buildYear >= 1985) return 4500000;
+  if (buildYear >= 1981) return 4200000;
+  if (buildYear >= 1976) return 3500000;
+  if (buildYear >= 1973) return 2300000;
+  if (buildYear >= 1964) return 1500000;
+  return 1000000;
+}
+
+export function calcAcquisitionTax(e: PropertyTaxEntry): {
+  buildingDeduction: number;
+  buildingTaxBase: number;
+  buildingTax: number;
+  landBaseTax: number;
+  landReduction: number;
+  landTax: number;
+  total: number;
+  qualifiesForReduction: boolean;
+} | null {
+  const floorArea = e.floorArea;
+  if (!floorArea) return null;
+
+  const isNew = e.isNewBuilding !== false;
+  const qualifiesForReduction = floorArea >= 50 && floorArea <= 240;
+
+  // Building
+  let buildingDeduction = 0;
+  if (qualifiesForReduction) {
+    if (isNew) {
+      buildingDeduction = e.isCertifiedHousing ? 13000000 : 12000000;
+    } else {
+      buildingDeduction = e.buildYear ? usedHousingDeduction(e.buildYear) : 12000000;
+    }
+  }
+  const buildingTaxBase = Math.max(0, e.buildingValue - buildingDeduction);
+  const buildingTax = Math.floor(buildingTaxBase * 0.03);
+
+  // Land（住宅用の場合に軽減）
+  const landBaseTax = Math.floor(e.landValue * 0.5 * 0.03);
+  let landReduction = 0;
+  if (qualifiesForReduction && e.landArea > 0) {
+    const landPerM2 = e.landValue / e.landArea;
+    const creditArea = Math.min(floorArea * 2, 200);
+    landReduction = Math.max(45000, Math.floor(landPerM2 * 0.5 * creditArea * 0.03));
+  }
+  const landTax = Math.max(0, landBaseTax - landReduction);
+
+  return { buildingDeduction, buildingTaxBase, buildingTax, landBaseTax, landReduction, landTax, total: buildingTax + landTax, qualifiesForReduction };
 }
 
 // ライフイベント
