@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2,
 } from "lucide-react";
 
 import {
@@ -61,6 +61,7 @@ import LoanModal from "./LoanModal";
 import SolarCalc from "./SolarCalc";
 import MortgageCalc from "./MortgageCalc";
 import PropertyTaxModal from "./PropertyTaxModal";
+import TaxChecklist from "./TaxChecklist";
 import UserProfileTab from "./UserProfileTab";
 import { useAuth } from "@/lib/auth-context";
 
@@ -79,7 +80,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "固定資産税" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -317,7 +318,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "固定資産税", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -810,6 +811,7 @@ export default function Dashboard() {
             { key: "家計簿", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
             { key: "固定資産税", icon: <Landmark size={14} /> },
+            { key: "申請チェック", icon: <CheckCircle2 size={14} /> },
             { key: "太陽光", icon: <Sun size={14} /> },
             { key: "住宅ローン", icon: <Building2 size={14} /> },
             { key: "プロフィール", icon: <UserRound size={14} /> },
@@ -1257,6 +1259,9 @@ export default function Dashboard() {
         {tab === "太陽光" && <SolarCalc />}
 
         {/* ── 住宅ローン ───────────────────────────────── */}
+        {/* ── 申請チェックリスト ─────────────────────────── */}
+        {tab === "申請チェック" && <TaxChecklist />}
+
         {tab === "住宅ローン" && <MortgageCalc />}
 
         {/* ── プロフィール ──────────────────────────────── */}
