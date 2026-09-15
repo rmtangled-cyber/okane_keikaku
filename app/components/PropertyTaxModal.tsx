@@ -170,9 +170,25 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
                       <span>土地・都市計画税</span><span className="text-right">{fmt(fixedResult.landUrbanTax)} 円</span>
                       <span>建物・都市計画税</span><span className="text-right">{fmt(fixedResult.buildingUrbanTax)} 円</span>
                     </>}
-                    <span className="font-semibold text-violet-800 border-t border-violet-200 pt-1 mt-1">合計（年額）</span>
+                    <span className="font-semibold text-violet-800 border-t border-violet-200 pt-1 mt-1">通常年額</span>
                     <span className="text-right font-semibold text-violet-800 border-t border-violet-200 pt-1 mt-1">{fmt(fixedResult.total)} 円</span>
                   </div>
+                  {fixedResult.newBuildingQualifies && (
+                    <div className="mt-3 pt-3 border-t border-violet-200">
+                      <p className="text-xs font-semibold text-green-700 mb-1">
+                        🏠 新築軽減適用（最初の{fixedResult.newBuildingReductionYears}年間）
+                        <span className="font-normal text-green-600 ml-1">建物分が最大1/2</span>
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 text-xs">
+                        <span>建物・固定資産税（軽減後）</span><span className="text-right">{fmt(fixedResult.buildingFixedTaxReduced)} 円</span>
+                        <span className="font-semibold text-green-700">軽減期間の年額</span>
+                        <span className="text-right font-semibold text-green-700">{fmt(fixedResult.totalReduced)} 円</span>
+                      </div>
+                      {(parseFloat(floorArea) > 120) && (
+                        <p className="text-xs text-amber-600 mt-1">※ 延床120m²超の部分は軽減対象外（120m²相当分のみ半額）</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {acqResult && (

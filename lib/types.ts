@@ -231,6 +231,11 @@ export function calcPropertyTax(e: PropertyTaxEntry): {
   landFixedTax: number; buildingFixedTax: number;
   landUrbanTax: number; buildingUrbanTax: number;
   fixedTax: number; urbanTax: number; total: number;
+  // 新築軽減（任意）
+  newBuildingQualifies: boolean;
+  newBuildingReductionYears: number;
+  buildingFixedTaxReduced: number;
+  totalReduced: number;
 } {
   let landFixedBase: number;
   let landUrbanBase: number;
@@ -247,16 +252,30 @@ export function calcPropertyTax(e: PropertyTaxEntry): {
     landFixedBase = e.landValue;
     landUrbanBase = e.landValue;
   }
-  const fixedTax = Math.floor((landFixedBase + e.buildingValue) * 0.014);
-  const urbanTax = e.hasUrbanTax
-    ? Math.floor((landUrbanBase + e.buildingValue) * (e.urbanTaxRate / 100))
-    : 0;
+  const landFixedTax = Math.floor(landFixedBase * 0.014);
+  const buildingFixedTax = Math.floor(e.buildingValue * 0.014);
+  const landUrbanTax = e.hasUrbanTax ? Math.floor(landUrbanBase * (e.urbanTaxRate / 100)) : 0;
+  const buildingUrbanTax = e.hasUrbanTax ? Math.floor(e.buildingValue * (e.urbanTaxRate / 100)) : 0;
+  const fixedTax = landFixedTax + buildingFixedTax;
+  const urbanTax = landUrbanTax + buildingUrbanTax;
+
+  // 新築住宅の固定資産税軽減：延床50〜280m²、建物固定資産税のうち120m²相当分を1/2
+  const floorArea = e.floorArea ?? 0;
+  const isNew = e.isNewBuilding !== false;
+  const newBuildingQualifies = isNew && floorArea >= 50 && floorArea <= 280;
+  const newBuildingReductionYears = newBuildingQualifies
+    ? (e.isCertifiedHousing ? 5 : 3) : 0;
+  let buildingFixedTaxReduced = buildingFixedTax;
+  if (newBuildingQualifies && floorArea > 0) {
+    const qualifyingRatio = Math.min(120, floorArea) / floorArea;
+    buildingFixedTaxReduced = Math.floor(buildingFixedTax * (1 - qualifyingRatio * 0.5));
+  }
+  const totalReduced = landFixedTax + buildingFixedTaxReduced + urbanTax;
+
   return {
-    landFixedTax: Math.floor(landFixedBase * 0.014),
-    buildingFixedTax: Math.floor(e.buildingValue * 0.014),
-    landUrbanTax: e.hasUrbanTax ? Math.floor(landUrbanBase * (e.urbanTaxRate / 100)) : 0,
-    buildingUrbanTax: e.hasUrbanTax ? Math.floor(e.buildingValue * (e.urbanTaxRate / 100)) : 0,
+    landFixedTax, buildingFixedTax, landUrbanTax, buildingUrbanTax,
     fixedTax, urbanTax, total: fixedTax + urbanTax,
+    newBuildingQualifies, newBuildingReductionYears, buildingFixedTaxReduced, totalReduced,
   };
 }
 
