@@ -23,6 +23,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
   const [isCertifiedHousing, setIsCertifiedHousing] = useState(() => entry?.isCertifiedHousing ?? false);
   const [buildYear, setBuildYear] = useState(() => entry?.buildYear ? String(entry.buildYear) : "");
   const [buildingCompleteYear, setBuildingCompleteYear] = useState(() => entry?.buildingCompleteYear ? String(entry.buildingCompleteYear) : "");
+  const [expectedBuildingValue, setExpectedBuildingValue] = useState(() => entry?.expectedBuildingValue != null ? String(entry.expectedBuildingValue) : "");
   const [note, setNote] = useState(() => entry?.note ?? "");
 
   const previewEntry: PropertyTaxEntry = {
@@ -38,6 +39,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
     isCertifiedHousing,
     buildYear: buildYear ? parseInt(buildYear) : undefined,
     buildingCompleteYear: buildingCompleteYear ? parseInt(buildingCompleteYear) : undefined,
+    expectedBuildingValue: expectedBuildingValue ? parseFloat(expectedBuildingValue) : undefined,
     updatedAt: "",
   };
 
@@ -61,6 +63,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
       isCertifiedHousing,
       buildYear: buildYear ? parseInt(buildYear) : undefined,
       buildingCompleteYear: buildingCompleteYear ? parseInt(buildingCompleteYear) : undefined,
+      expectedBuildingValue: expectedBuildingValue ? parseFloat(expectedBuildingValue) : undefined,
       note: note || undefined,
     });
   }
@@ -233,6 +236,13 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
                 </p>
               )}
             </div>
+            {buildingCompleteYear && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">建物完成後の想定評価額（円）</label>
+                <input type="number" value={expectedBuildingValue} onChange={e => setExpectedBuildingValue(e.target.value)}
+                  placeholder="例: 8000000（シミュレーション用、未入力=現在の建物評価額を使用）" min={0} className={inputCls} />
+              </div>
+            )}
           </div>
 
           <div>

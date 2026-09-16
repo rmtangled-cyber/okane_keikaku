@@ -224,7 +224,8 @@ export interface PropertyTaxEntry {
   isCertifiedHousing?: boolean; // 長期優良住宅認定
   buildYear?: number;           // 築年（中古住宅）
   // ライフプランシミュレーション用（任意）
-  buildingCompleteYear?: number; // 建物完成予定年（これ以降に住宅用地軽減・新築軽減を適用）
+  buildingCompleteYear?: number;      // 建物完成予定年（これ以降に住宅用地軽減・新築軽減を適用）
+  expectedBuildingValue?: number;     // 完成後の建物評価額の見込み（シミュレーション用）
   note?: string;
   updatedAt: string;
 }
@@ -342,7 +343,11 @@ export function calcPropertyTaxForYear(e: PropertyTaxEntry, year: number): numbe
   const completeYear = e.buildingCompleteYear;
   if (!completeYear || year >= completeYear) {
     // 建物あり（または buildingCompleteYear 未設定）
-    const r = calcPropertyTax(e);
+    // 完成後は expectedBuildingValue があればそちらを使う
+    const postBuild: PropertyTaxEntry = completeYear && e.expectedBuildingValue != null
+      ? { ...e, isResidential: true, buildingValue: e.expectedBuildingValue }
+      : e;
+    const r = calcPropertyTax(postBuild);
     if (!completeYear) return r.total;
     // 新築軽減期間かどうか
     const reductionYears = r.newBuildingReductionYears;
