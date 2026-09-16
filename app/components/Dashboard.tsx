@@ -120,11 +120,13 @@ function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], ass
 }
 
 interface BreakdownItem { label: string; monthly: number }
+interface OneTimeItem { label: string; amount: number }
 interface SimPoint {
   year: number; assets: number; label?: string;
   annualIncome: number; annualExpense: number; oneTime: number;
   incomeItems: BreakdownItem[];
   expenseItems: BreakdownItem[];
+  oneTimeItems: OneTimeItem[];
 }
 
 function LifePlanTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: SimPoint }[]; label?: number }) {
@@ -163,9 +165,13 @@ function LifePlanTooltip({ active, payload, label }: { active?: boolean; payload
         </div>
         {/* 一時金 */}
         {d.oneTime !== 0 && (
-          <div className="flex justify-between gap-4">
-            <span className={d.oneTime > 0 ? "text-blue-500" : "text-orange-500"}>一時金</span>
-            <span className={`font-medium ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
+          <div>
+            {d.oneTimeItems.map((item, i) => (
+              <div key={i} className="flex justify-between gap-4">
+                <span className={`truncate ${item.amount > 0 ? "text-blue-500" : "text-orange-500"}`}>{item.label}</span>
+                <span className={`font-medium shrink-0 ${item.amount > 0 ? "text-blue-600" : "text-orange-600"}`}>{item.amount > 0 ? "+" : ""}{fmtY(item.amount)}円</span>
+              </div>
+            ))}
           </div>
         )}
         <div className={`flex justify-between gap-4 border-t border-gray-100 pt-1.5 font-bold ${balance >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -267,7 +273,9 @@ function simulate(
       .reduce((s, e) => s + e.monthlyAmountChange, 0);
 
     // One-time events this year
-    const oneTime = lifeEvents.filter(e => e.year === year).reduce((s, e) => s + e.oneTimeAmount, 0);
+    const yearOneTimeEvents = lifeEvents.filter(e => e.year === year && e.oneTimeAmount !== 0);
+    const oneTime = yearOneTimeEvents.reduce((s, e) => s + e.oneTimeAmount, 0);
+    const oneTimeItems: OneTimeItem[] = yearOneTimeEvents.map(e => ({ label: e.title, amount: e.oneTimeAmount }));
 
     // takeHome には既にボーナス手取り月換算が含まれている（incomeItemsFromProfiles 側で合算済み）
     const totalTakeHomeMonthly = takeHome + bonusTakeHome / 12;
@@ -281,8 +289,11 @@ function simulate(
 
     const yearEvents = lifeEvents.filter(e => e.year === year);
 
+    // 継続的収入増のライフイベントを個別に展開
     const incomeItems: BreakdownItem[] = [...incomeItemsFromProfiles];
-    if (cumulativeMonthly > 0) incomeItems.push({ label: "ライフイベント", monthly: cumulativeMonthly });
+    lifeEvents
+      .filter(e => e.monthlyAmountChange > 0 && e.year <= year && (e.endYear === undefined || e.endYear >= year))
+      .forEach(e => incomeItems.push({ label: e.title, monthly: e.monthlyAmountChange }));
 
     const expenseItems: BreakdownItem[] = [];
     if (expenseTotal > 0) expenseItems.push({ label: "固定費・変動費", monthly: expenseTotal });
@@ -290,7 +301,10 @@ function simulate(
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
     if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
     if (propTaxAnnual > 0) expenseItems.push({ label: "固定資産税", monthly: propTaxAnnual / 12 });
-    if (cumulativeMonthly < 0) expenseItems.push({ label: "ライフイベント（支出増）", monthly: Math.abs(cumulativeMonthly) });
+    // 継続的支出増のライフイベントを個別に展開
+    lifeEvents
+      .filter(e => e.monthlyAmountChange < 0 && e.year <= year && (e.endYear === undefined || e.endYear >= year))
+      .forEach(e => expenseItems.push({ label: e.title, monthly: Math.abs(e.monthlyAmountChange) }));
 
     points.push({
       year,
@@ -301,6 +315,7 @@ function simulate(
       oneTime,
       incomeItems,
       expenseItems,
+      oneTimeItems,
     });
   }
   return points;
@@ -1433,9 +1448,21 @@ export default function Dashboard() {
                       </div>
                       {/* 一時金 */}
                       {d.oneTime !== 0 && (
-                        <div className="px-4 py-3 flex justify-between items-center">
-                          <span className={`text-xs font-semibold ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>一時金</span>
-                          <span className={`text-sm font-bold ${d.oneTime > 0 ? "text-blue-700" : "text-orange-700"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
+                        <div className="px-4 py-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`text-xs font-semibold ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>一時金</span>
+                            <span className={`text-sm font-bold ${d.oneTime > 0 ? "text-blue-700" : "text-orange-700"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
+                          </div>
+                          <table className="w-full text-xs">
+                            <tbody className="divide-y divide-gray-50">
+                              {d.oneTimeItems.map((item, i) => (
+                                <tr key={i}>
+                                  <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                  <td className="py-1 text-right font-medium pl-3" style={{color: item.amount > 0 ? "#1d4ed8" : "#c2410c"}}>{item.amount > 0 ? "+" : ""}{fmtY(item.amount)}円</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                       {/* 合計 */}
