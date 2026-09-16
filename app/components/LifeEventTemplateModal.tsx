@@ -24,8 +24,9 @@ function evt(
   monthly: number,
   oneTime: number,
   note?: string,
+  endYear?: number,
 ): DraftEvent {
-  return { year, title, type, monthlyAmountChange: monthly, oneTimeAmount: oneTime, note, isDraft: true };
+  return { year, endYear, title, type, monthlyAmountChange: monthly, oneTimeAmount: oneTime, note, isDraft: true };
 }
 
 const TEMPLATES: Template[] = [
@@ -42,13 +43,13 @@ const TEMPLATES: Template[] = [
       return [
         evt(Y, "出産・準備費用", "一時支出", 0, -500000, "入院費・ベビー用品など"),
         evt(Y, "出産関連給付金", "一時収入", 0, 650000, "出産育児一時金50万+都給付金5万+赤ちゃんファースト10万+α"),
-        evt(Y, "育休取得（収入減）", "収入変化", -100000, 0, "育休中。育児休業給付金で一部補填"),
-        evt(Y + 1, "児童手当", "収入変化", 15000, 0, "〜中学卒業まで（3歳未満は15,000円/月）"),
-        evt(Y + 1, "保育園・育児費用", "支出増加", -50000, 0, "保育料・おむつ・習い事など"),
-        evt(Y + 7, "小学校入学", "支出増加", -15000, -150000, "ランドセル・学用品など一時費用含む"),
-        evt(Y + 13, "中学校入学", "支出増加", -30000, 0, "部活・塾など"),
-        evt(Y + 16, "高校入学", "支出増加", -40000, 0, "授業料・交通費など"),
-        evt(Y + 19, "大学入学", "支出増加", -100000, -1000000, "入学金・前期授業料など"),
+        evt(Y, "育休取得（収入減）", "収入変化", -100000, 0, "育休中。育児休業給付金で一部補填", Y + 1),
+        evt(Y + 1, "児童手当", "収入変化", 15000, 0, "〜中学卒業まで（3歳未満は15,000円/月）", Y + 15),
+        evt(Y + 1, "保育園・育児費用", "支出増加", -50000, 0, "保育料・おむつ・習い事など", Y + 6),
+        evt(Y + 7, "小学校入学", "支出増加", -15000, -150000, "ランドセル・学用品など一時費用含む", Y + 12),
+        evt(Y + 13, "中学校入学", "支出増加", -30000, 0, "部活・塾など", Y + 15),
+        evt(Y + 16, "高校入学", "支出増加", -40000, 0, "授業料・交通費など", Y + 18),
+        evt(Y + 19, "大学入学", "支出増加", -100000, -1000000, "入学金・前期授業料など", Y + 22),
       ];
     },
   },
@@ -175,7 +176,9 @@ export default function LifeEventTemplateModal({ onAdd, onClose }: Props) {
             <div className="space-y-1">
               {template.build(param).map((d, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs text-gray-600">
-                  <span className="text-gray-400 w-12 shrink-0">{d.year}年</span>
+                  <span className="text-gray-400 w-24 shrink-0">
+                    {d.year}年{d.endYear ? `〜${d.endYear}年` : "〜"}
+                  </span>
                   <span className="font-medium">{d.title}</span>
                   {d.oneTimeAmount !== 0 && (
                     <span className={d.oneTimeAmount > 0 ? "text-blue-500" : "text-orange-500"}>
