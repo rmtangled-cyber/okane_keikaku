@@ -364,6 +364,8 @@ export default function Dashboard() {
 
   // 家計簿 month
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  // ライフプラン: クリックで選択した年のポイント
+  const [selectedSimPoint, setSelectedSimPoint] = useState<SimPoint | null>(null);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -1305,7 +1307,11 @@ export default function Dashboard() {
                 {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
               </p>
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
-                <AreaChart data={simData}>
+                <AreaChart data={simData} onClick={(e) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const pt = (e as any)?.activePayload?.[0]?.payload as SimPoint | undefined;
+                  if (pt) setSelectedSimPoint(prev => prev?.year === pt.year ? null : pt);
+                }} style={{ cursor: "pointer" }}>
                   <defs>
                     <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
@@ -1378,6 +1384,84 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+              <p className="text-xs text-gray-400 mt-2 text-center">グラフをタップすると年別の収支明細が表示されます</p>
+
+              {/* 年別収支明細 */}
+              {selectedSimPoint && (() => {
+                const d = selectedSimPoint;
+                const fmtM = (v: number) => `¥${Math.round(v).toLocaleString()}`;
+                const fmtY = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000).toLocaleString()}万`;
+                const balance = d.annualIncome - d.annualExpense;
+                const selfAgeAtYear = userProfile ? d.year - userProfile.birthYear : null;
+                return (
+                  <div className="mt-4 border border-violet-200 rounded-xl overflow-hidden">
+                    <div className="bg-violet-50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-gray-800 text-sm">{d.year}年</span>
+                        {selfAgeAtYear != null && <span className="ml-2 text-xs text-gray-500">（{selfAgeAtYear}歳）</span>}
+                        {d.label && <span className="ml-2 text-xs text-violet-600 bg-violet-100 rounded px-1.5 py-0.5">{d.label}</span>}
+                      </div>
+                      <button onClick={() => setSelectedSimPoint(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕ 閉じる</button>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {/* 収入 */}
+                      <div className="px-4 py-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold text-teal-700">収入（年間）</span>
+                          <span className="text-sm font-bold text-teal-700">+{fmtY(d.annualIncome)}円</span>
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-gray-50">
+                            {d.incomeItems.map((item, i) => (
+                              <tr key={i}>
+                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
+                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* 支出 */}
+                      <div className="px-4 py-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold text-rose-600">支出（年間）</span>
+                          <span className="text-sm font-bold text-rose-600">−{fmtY(d.annualExpense)}円</span>
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-gray-50">
+                            {d.expenseItems.map((item, i) => (
+                              <tr key={i}>
+                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
+                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* 一時金 */}
+                      {d.oneTime !== 0 && (
+                        <div className="px-4 py-3 flex justify-between items-center">
+                          <span className={`text-xs font-semibold ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>一時金</span>
+                          <span className={`text-sm font-bold ${d.oneTime > 0 ? "text-blue-700" : "text-orange-700"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
+                        </div>
+                      )}
+                      {/* 合計 */}
+                      <div className="px-4 py-3 bg-gray-50">
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>年間収支</span>
+                          <span className={`text-sm font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>{balance >= 0 ? "+" : ""}{fmtY(balance)}円</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span className="text-xs font-bold text-violet-700">総資産</span>
+                          <span className="text-sm font-bold text-violet-700">{fmtY(d.assets)}円</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Income profiles */}
