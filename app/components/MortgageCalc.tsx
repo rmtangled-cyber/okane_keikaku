@@ -261,12 +261,12 @@ export default function MortgageCalc() {
           rate: p.rate,
           extra: p.extra,
         }));
-        // Ensure base (fromYear=1) exists
+        // Ensure base (fromYear=1) exists with id="base"
         if (!loaded.some(rc => rc.fromYear === "1")) {
           loaded.unshift({ id: "base", fromYear: "1", rate: plan.bankRate, extra: "" });
         } else {
           const idx = loaded.findIndex(rc => rc.fromYear === "1");
-          loaded[idx] = { ...loaded[idx], rate: plan.bankRate };
+          loaded[idx] = { ...loaded[idx], id: "base", rate: plan.bankRate };
         }
         setRateChanges(loaded);
       }
@@ -585,7 +585,7 @@ export default function MortgageCalc() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {[...drawdowns].sort((a, b) => a.yearMonth.localeCompare(b.yearMonth)).map(d => (
+                {drawdowns.map(d => (
                   <tr key={d.id}>
                     <td className="px-4 py-2.5">
                       <input
