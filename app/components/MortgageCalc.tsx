@@ -643,19 +643,38 @@ export default function MortgageCalc() {
           </div>
         )}
 
-        <div className="px-5 py-3 border-t border-gray-50">
-          <button
-            onClick={() => {
-              const now = new Date();
-              const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-              setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
-            }}
-            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-          >
-            <Plus size={13} />
-            分割実行を追加
-          </button>
-        </div>
+        {drawdowns.length === 0 && (
+          <div className="px-5 py-5 text-center">
+            <p className="text-xs text-gray-400 mb-3">建物工事中に複数回融資が実行される場合は、ここにスケジュールを登録してください</p>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                setDrawdowns([{ id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+            >
+              <Plus size={14} />
+              分割実行を追加
+            </button>
+          </div>
+        )}
+
+        {drawdowns.length > 0 && (
+          <div className="px-5 py-3 border-t border-gray-50">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+              }}
+              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              <Plus size={13} />
+              さらに追加
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Rate change plan */}
