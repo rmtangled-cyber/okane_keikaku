@@ -328,7 +328,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "資産", "目標", "収支", "家計簿", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "家計簿", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -828,9 +828,6 @@ export default function Dashboard() {
             { key: "概要", icon: <BarChart2 size={14} /> },
             { key: "株式", icon: <TrendingUp size={14} /> },
             { key: "投資信託", icon: <Layers size={14} /> },
-            { key: "資産", icon: <Wallet size={14} /> },
-            { key: "目標", icon: <Target size={14} /> },
-            { key: "収支", icon: <Receipt size={14} /> },
             { key: "家計簿", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
             { key: "固定資産税", icon: <Landmark size={14} /> },
