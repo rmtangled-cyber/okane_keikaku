@@ -977,7 +977,11 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {[...incomeProfiles].sort((a, b) => (a.activeFromYear ?? 0) - (b.activeFromYear ?? 0)).map(p => (
+                  {[...incomeProfiles].sort((a, b) => {
+                    const ageA = a.age + ((a.activeFromYear ?? currentYear) - currentYear);
+                    const ageB = b.age + ((b.activeFromYear ?? currentYear) - currentYear);
+                    return ageA - ageB;
+                  }).map(p => (
                     <IncomeProfileCard key={p.id} profile={p}
                       onEdit={p => { setEditingIncome(p); setShowIncomeModal(true); }}
                       onDelete={handleDeleteIncome} />
@@ -1425,7 +1429,11 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-2">
                   {[...incomeProfiles]
-                    .sort((a, b) => (a.activeFromYear ?? 0) - (b.activeFromYear ?? 0))
+                    .sort((a, b) => {
+                      const ageA = a.age + ((a.activeFromYear ?? currentYear) - currentYear);
+                      const ageB = b.age + ((b.activeFromYear ?? currentYear) - currentYear);
+                      return ageA - ageB;
+                    })
                     .map(p => {
                       const fromYearLabel = p.activeFromYear ? `${p.activeFromYear}年〜` : "現在〜";
                       return (
