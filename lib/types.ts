@@ -176,6 +176,13 @@ export interface LoanPlan {
 }
 
 // 住宅ローンシミュレーション設定
+export interface DrawdownEntry {
+  id: string;
+  yearMonth: string;  // "YYYY-MM"
+  amountMan: number;  // 万円
+  label?: string;     // 例: "契約金30%"
+}
+
 export interface MortgageSimPlan {
   bankName: string;
   bankRate: string;
@@ -183,6 +190,7 @@ export interface MortgageSimPlan {
   termYears: string;
   monthlyIncomeMan?: string;
   periodSettings: { fromYear?: number; rate: string; extra: string }[];
+  drawdownSchedule?: DrawdownEntry[];
   updatedAt: string;
 }
 
