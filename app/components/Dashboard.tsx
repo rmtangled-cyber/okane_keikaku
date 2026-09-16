@@ -53,6 +53,7 @@ import IncomeProfileModal from "./IncomeProfileModal";
 import LifeEventCard from "./LifeEventCard";
 import LifeEventModal from "./LifeEventModal";
 import LifeEventTemplateModal from "./LifeEventTemplateModal";
+import ExpenseTemplateModal from "./ExpenseTemplateModal";
 import InsurancePlanCard from "./InsurancePlanCard";
 import InsurancePlanModal from "./InsurancePlanModal";
 import SpendingModal from "./SpendingModal";
@@ -344,6 +345,7 @@ export default function Dashboard() {
   const [showLifeEventModal, setShowLifeEventModal] = useState(false);
   const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [editingInsurance, setEditingInsurance] = useState<InsurancePlan | null>(null);
@@ -601,6 +603,9 @@ export default function Dashboard() {
 
   const handleAddDrafts = useCallback((drafts: LifeEvent[]) => {
     setDraftEvents(prev => [...prev, ...drafts]);
+  }, []);
+  const handleAddExpenseTemplates = useCallback((items: MonthlyExpense[]) => {
+    setExpenses(prev => { const next = [...prev, ...items]; saveExpenses(next); return next; });
   }, []);
   const handleConfirmDraft = useCallback((id: string) => {
     setDraftEvents(prev => {
@@ -1086,9 +1091,13 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">月次生活費</h3>
-                <div className="flex gap-3 text-xs text-gray-500">
+                <div className="flex items-center gap-3 text-xs text-gray-500">
                   <span>固定費 ¥{fixedExpenses.toLocaleString()}</span>
                   <span>変動費 ¥{variableExpenses.toLocaleString()}</span>
+                  <button onClick={() => setShowExpenseTemplateModal(true)}
+                    className="flex items-center gap-1 text-xs text-rose-500 hover:underline font-medium">
+                    テンプレート
+                  </button>
                 </div>
               </div>
               <p className="text-xs text-gray-400 mb-3">ここで登録した金額がライフプランのシミュレーションに反映されます。</p>
@@ -1520,6 +1529,7 @@ export default function Dashboard() {
       {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
       {showLifeEventModal && <LifeEventModal key={editingLifeEvent?.id ?? "new"} event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
       {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
+      {showExpenseTemplateModal && <ExpenseTemplateModal onAdd={handleAddExpenseTemplates} onClose={() => setShowExpenseTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
