@@ -37,7 +37,7 @@ import {
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
-import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear, mortgageMonthlyPaymentByYear } from "@/lib/loanCalc";
+import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear, mortgageMonthlyPaymentByYear, mortgageMonthlyPaymentWithDrawdown } from "@/lib/loanCalc";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
 import GoalCard from "./GoalCard";
@@ -196,9 +196,18 @@ function simulate(
   let assets = startAssets;
 
   const mortgageTermYears = mortgageSimPlan ? (parseInt(mortgageSimPlan.termYears) || 35) : 0;
-  // 年別月次返済額（変動金利・繰上返済を反映）
+  // 年別月次返済額（変動金利・繰上返済・分割実行を反映）
   const mortgagePaymentByYear: number[] = (() => {
     if (!mortgageSimPlan) return [];
+    const drawdowns = mortgageSimPlan.drawdownSchedule?.filter(d => d.amountMan > 0) ?? [];
+    if (drawdowns.length > 0) {
+      return mortgageMonthlyPaymentWithDrawdown(
+        mortgageTermYears,
+        drawdowns.map(d => ({ yearMonth: d.yearMonth, amountMan: d.amountMan })),
+        mortgageSimPlan.periodSettings ?? [],
+        startYear,
+      );
+    }
     const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
     if (principal <= 0) return [];
     if (mortgageSimPlan.periodSettings?.length) {
@@ -415,18 +424,29 @@ export default function Dashboard() {
     const status = loanCurrentStatus(l.principal, l.annualRate, l.termMonths, l.loanType, l.startDate);
     return s + status.currentPayment;
   }, 0);
-  // 住宅ローンシミュレーターの今月返済額（年目0の月額）
+  // 住宅ローンシミュレーターの今月返済額（現在年の月額）
   const mortgageMonthlyNow = useMemo(() => {
     if (!mortgageSimPlan) return 0;
-    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
     const termYears = parseInt(mortgageSimPlan.termYears) || 0;
-    if (principal <= 0 || termYears <= 0) return 0;
+    if (termYears <= 0) return 0;
+    const drawdowns = mortgageSimPlan.drawdownSchedule?.filter(d => d.amountMan > 0) ?? [];
+    if (drawdowns.length > 0) {
+      const arr = mortgageMonthlyPaymentWithDrawdown(
+        termYears,
+        drawdowns.map(d => ({ yearMonth: d.yearMonth, amountMan: d.amountMan })),
+        mortgageSimPlan.periodSettings ?? [],
+        currentYear,
+      );
+      return arr[0] ?? 0;
+    }
+    const principal = (parseFloat(mortgageSimPlan.principalMan) || 0) * 10000;
+    if (principal <= 0) return 0;
     if (mortgageSimPlan.periodSettings?.length) {
       return mortgageMonthlyPaymentByYear(principal, termYears, mortgageSimPlan.periodSettings)[0] ?? 0;
     }
     const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
     return calcEqualPayment(principal, rate, termYears * 12);
-  }, [mortgageSimPlan]);
+  }, [mortgageSimPlan, currentYear]);
 
   const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal + mortgageMonthlyNow;
   const monthlySavings = monthlyTakeHome - totalExpenses;

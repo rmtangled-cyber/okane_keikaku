@@ -6,9 +6,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
+import type { DrawdownEntry } from "../../lib/types";
 
 // ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
 
@@ -240,6 +241,7 @@ export default function MortgageCalc() {
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
+  const [drawdowns, setDrawdowns] = useState<DrawdownEntry[]>([]);
 
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
@@ -251,6 +253,7 @@ export default function MortgageCalc() {
       setBankName(plan.bankName);
       setBankRate(plan.bankRate);
       if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
+      if (plan.drawdownSchedule?.length) setDrawdowns(plan.drawdownSchedule);
       if (plan.periodSettings?.length) {
         const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
           id: `loaded_${i}`,
@@ -290,6 +293,7 @@ export default function MortgageCalc() {
           bankName, bankRate, principalMan, termYears,
           monthlyIncomeMan,
           periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
+          drawdownSchedule: drawdowns.length > 0 ? drawdowns : undefined,
           updatedAt: new Date().toISOString(),
         }),
         timeout,
@@ -556,6 +560,103 @@ export default function MortgageCalc() {
           )}
         </div>
       )}
+
+      {/* Drawdown schedule */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2">
+            <Calendar size={15} className="text-indigo-500 shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">分割実行スケジュール</h3>
+              <p className="text-xs text-gray-400 mt-0.5">建物工事中の段階融資を設定します。設定するとライフプランに反映されます</p>
+            </div>
+          </div>
+        </div>
+
+        {drawdowns.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">実行年月</th>
+                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium">金額（万円）</th>
+                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">ラベル</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {[...drawdowns].sort((a, b) => a.yearMonth.localeCompare(b.yearMonth)).map(d => (
+                  <tr key={d.id}>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="month"
+                        value={d.yearMonth}
+                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, yearMonth: e.target.value } : x))}
+                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          value={d.amountMan || ""}
+                          min={0}
+                          step={100}
+                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
+                          className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <span className="text-gray-500">万</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="text"
+                        value={d.label ?? ""}
+                        placeholder="例: 契約金30%"
+                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, label: e.target.value } : x))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
+                        className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {drawdowns.length > 0 && (
+          <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
+            合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
+            {(() => {
+              const sorted = [...drawdowns].filter(d => d.yearMonth).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+              const last = sorted[sorted.length - 1];
+              return last ? `　最終実行: ${last.yearMonth}以降に元利均等返済スタート` : null;
+            })()}
+          </div>
+        )}
+
+        <div className="px-5 py-3 border-t border-gray-50">
+          <button
+            onClick={() => {
+              const now = new Date();
+              const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+            }}
+            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            <Plus size={13} />
+            分割実行を追加
+          </button>
+        </div>
+      </div>
 
       {/* Rate change plan */}
       {principal > 0 && (
