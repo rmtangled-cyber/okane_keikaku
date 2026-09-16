@@ -173,6 +173,7 @@ function simulate(
   yearsToProject: number,
   mortgageSimPlan?: MortgageSimPlan | null,
   propertyTaxEntries?: PropertyTaxEntry[],
+  inflationRate?: number,
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -225,8 +226,11 @@ function simulate(
       incomeItemsFromProfiles.push({ label: p.name, monthly: pTakeHome + Math.round(pBonus / 12) });
     }
 
-    // Fixed expenses
-    const expenseTotal = expenses.reduce((s, e) => s + e.amount, 0);
+    // Fixed expenses (inflation-adjusted)
+    const baseExpenseTotal = expenses.reduce((s, e) => s + e.amount, 0);
+    const expenseTotal = inflationRate && inflationRate > 0
+      ? Math.round(baseExpenseTotal * Math.pow(1 + inflationRate, i))
+      : baseExpenseTotal;
 
     // Insurance (active in this year)
     const insuranceTotal = insurancePlans.filter(p => {
@@ -272,7 +276,7 @@ function simulate(
       .forEach(e => incomeItems.push({ label: e.title, monthly: e.monthlyAmountChange }));
 
     const expenseItems: BreakdownItem[] = [];
-    if (expenseTotal > 0) expenseItems.push({ label: "固定費・変動費", monthly: expenseTotal });
+    if (expenseTotal > 0) expenseItems.push({ label: "生活費", monthly: expenseTotal });
     if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
     if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
@@ -346,6 +350,7 @@ export default function Dashboard() {
   const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
+  const [inflationRate, setInflationRate] = useState<number>(0);
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [editingInsurance, setEditingInsurance] = useState<InsurancePlan | null>(null);
@@ -489,7 +494,7 @@ export default function Dashboard() {
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
     lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
-    propertyTaxEntries,
+    propertyTaxEntries, inflationRate,
   );
 
   // ── CRUD callbacks ────────────────────────────────────
@@ -1232,10 +1237,22 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
                 <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜90歳）
               </h3>
-              <p className="text-xs text-gray-400 mb-4">
+              <p className="text-xs text-gray-400 mb-3">
                 年齢別収入・ローン・保険・ライフイベントを考慮した試算
                 {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
               </p>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-xs text-gray-500 shrink-0">生活費インフレ率</span>
+                <input
+                  type="range" min={0} max={5} step={0.5}
+                  value={inflationRate * 100}
+                  onChange={e => setInflationRate(parseFloat(e.target.value) / 100)}
+                  className="flex-1 accent-violet-500"
+                />
+                <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
+                  {inflationRate === 0 ? "なし" : `${(inflationRate * 100).toFixed(1)}%`}
+                </span>
+              </div>
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
                 <AreaChart data={simData} onClick={(e) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
