@@ -192,6 +192,7 @@ function simulate(
   mortgageSimPlan?: MortgageSimPlan | null,
   propertyTaxEntries?: PropertyTaxEntry[],
   inflationRate?: number,
+  funds?: FundHolding[],
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -293,10 +294,14 @@ function simulate(
       .filter(e => e.monthlyAmountChange > 0 && e.year <= year && (e.endYear === undefined || e.endYear >= year))
       .forEach(e => incomeItems.push({ label: e.title, monthly: e.monthlyAmountChange }));
 
+    // 投資信託月次積立（キャッシュフロー計算には含めないが内訳に表示）
+    const fundMonthly = (funds ?? []).reduce((s, f) => s + (f.monthlyContribution ?? 0), 0);
+
     const expenseItems: BreakdownItem[] = [];
     if (expenseTotal > 0) expenseItems.push({ label: "生活費", monthly: expenseTotal });
     if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
+    if (fundMonthly > 0) expenseItems.push({ label: "投資信託積立", monthly: fundMonthly });
     if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
     if (propTaxAnnual > 0) expenseItems.push({ label: "固定資産税", monthly: propTaxAnnual / 12 });
     // 継続的支出増のライフイベントを個別に展開
@@ -309,7 +314,7 @@ function simulate(
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
       annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly)) * 12),
-      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + Math.max(0, -cumulativeMonthly)) * 12),
+      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + fundMonthly + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
       incomeItems,
       expenseItems,
@@ -514,7 +519,7 @@ export default function Dashboard() {
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
     lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
-    propertyTaxEntries, inflationRate,
+    propertyTaxEntries, inflationRate, funds,
   );
 
   // ── CRUD callbacks ────────────────────────────────────
