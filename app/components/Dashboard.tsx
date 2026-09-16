@@ -46,14 +46,14 @@ import StockCard from "./StockCard";
 import StockModal from "./StockModal";
 import FundCard from "./FundCard";
 import FundModal from "./FundModal";
-import ExpenseCard from "./ExpenseCard";
-import ExpenseModal from "./ExpenseModal";
 import IncomeProfileCard from "./IncomeProfileCard";
 import IncomeProfileModal from "./IncomeProfileModal";
 import LifeEventCard from "./LifeEventCard";
 import LifeEventModal from "./LifeEventModal";
 import LifeEventTemplateModal from "./LifeEventTemplateModal";
-import ExpenseTemplateModal from "./ExpenseTemplateModal";
+import ExpenseCard from "./ExpenseCard";
+import ExpenseModal from "./ExpenseModal";
+// ExpenseTemplateModal not used in new inline UI
 import InsurancePlanCard from "./InsurancePlanCard";
 import InsurancePlanModal from "./InsurancePlanModal";
 import SpendingModal from "./SpendingModal";
@@ -82,6 +82,24 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
 };
 
 type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+
+const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
+  { name: "家賃",     emoji: "🏠", category: "住居費",    isFixed: true  },
+  { name: "食費",     emoji: "🍚", category: "食費",      isFixed: false },
+  { name: "日用雑貨", emoji: "🛒", category: "その他",    isFixed: false },
+  { name: "交通費",   emoji: "🚃", category: "交通費",    isFixed: true  },
+  { name: "水道",     emoji: "💧", category: "水道光熱費",isFixed: true  },
+  { name: "光熱",     emoji: "💡", category: "水道光熱費",isFixed: true  },
+  { name: "通信",     emoji: "📱", category: "通信費",    isFixed: true  },
+  { name: "医療",     emoji: "🏥", category: "医療費",    isFixed: false },
+  { name: "教育",     emoji: "📚", category: "教育費",    isFixed: false },
+  { name: "美容",     emoji: "💄", category: "その他",    isFixed: false },
+  { name: "衣服",     emoji: "👕", category: "その他",    isFixed: false },
+  { name: "車",       emoji: "🚗", category: "交通費",    isFixed: true  },
+  { name: "交際費",   emoji: "🍻", category: "娯楽費",    isFixed: false },
+  { name: "エンタメ", emoji: "🎮", category: "娯楽費",    isFixed: false },
+  { name: "旅行",     emoji: "✈️", category: "娯楽費",    isFixed: false },
+];
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -351,6 +369,8 @@ export default function Dashboard() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
   const [inflationRate, setInflationRate] = useState<number>(0);
+  // 生活費カテゴリ入力用の一時state（name → 入力文字列）
+  const [expenseInputs, setExpenseInputs] = useState<Record<string, string>>({});
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [editingInsurance, setEditingInsurance] = useState<InsurancePlan | null>(null);
@@ -564,6 +584,31 @@ export default function Dashboard() {
     setExpenses(prev => { const next = prev.filter(e => e.id !== id); saveExpenses(next); return next; });
   }, []);
 
+  const handleSetExpenseAmount = useCallback((preset: typeof LIFE_EXPENSE_PRESETS[number], amount: number) => {
+    setExpenses(prev => {
+      const existing = prev.find(e => e.name === preset.name);
+      let next: typeof prev;
+      if (amount <= 0) {
+        next = existing ? prev.filter(e => e.name !== preset.name) : prev;
+      } else if (existing) {
+        next = prev.map(e => e.name === preset.name
+          ? { ...e, amount, updatedAt: new Date().toISOString() }
+          : e);
+      } else {
+        next = [...prev, {
+          id: `life_${preset.name}_${Date.now()}`,
+          name: preset.name,
+          category: preset.category,
+          amount,
+          isFixed: preset.isFixed,
+          updatedAt: new Date().toISOString(),
+        }];
+      }
+      saveExpenses(next);
+      return next;
+    });
+  }, []);
+
   const handleSaveIncome = useCallback(async (data: Omit<IncomeProfile, "id" | "updatedAt">) => {
     if (!incomeLoadedRef.current) return;
     const profile: IncomeProfile = editingIncome
@@ -730,10 +775,6 @@ export default function Dashboard() {
             </button>
           </div>
         );
-      case "生活費":
-        return <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
-          <Plus size={15} /> 支出を追加</button>;
       case "ライフプラン":
         return <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
@@ -1096,28 +1137,49 @@ export default function Dashboard() {
         {/* ── 生活費 ────────────────────────────────────── */}
         {tab === "生活費" && (
           <div className="space-y-5">
-            {/* Expenses */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700">月次生活費</h3>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span>固定費 ¥{fixedExpenses.toLocaleString()}</span>
-                  <span>変動費 ¥{variableExpenses.toLocaleString()}</span>
-                  <button onClick={() => setShowExpenseTemplateModal(true)}
-                    className="flex items-center gap-1 text-xs text-rose-500 hover:underline font-medium">
-                    テンプレート
-                  </button>
-                </div>
+            {/* Header */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-gray-700">月間生活費</h3>
+                <span className="text-xl font-bold text-gray-900">¥{(fixedExpenses + variableExpenses).toLocaleString()}</span>
               </div>
-              <p className="text-xs text-gray-400 mb-3">ここで登録した金額がライフプランのシミュレーションに反映されます。</p>
-              {expenses.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-6 text-center text-gray-400 shadow-sm">
-                  <p className="text-sm">生活費が登録されていません</p>
-                  <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }} className="mt-2 text-xs text-rose-600 hover:underline">生活費を追加する</button>
-                </div>
-              ) : (
-                <div className="space-y-2">{expenses.map(e => <ExpenseCard key={e.id} expense={e} onEdit={e => { setEditingExpense(e); setShowExpenseModal(true); }} onDelete={handleDeleteExpense} />)}</div>
-              )}
+              <p className="text-xs text-gray-400">入力した金額がライフプランのシミュレーションに反映されます</p>
+            </div>
+
+            {/* Category grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {LIFE_EXPENSE_PRESETS.map(preset => {
+                const saved = expenses.find(e => e.name === preset.name);
+                const inputVal = expenseInputs[preset.name] ?? (saved ? String(saved.amount) : "");
+                return (
+                  <div key={preset.name} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg leading-none">{preset.emoji}</span>
+                      <span className="text-xs font-medium text-gray-700">{preset.name}</span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${preset.isFixed ? "bg-blue-50 text-blue-500" : "bg-orange-50 text-orange-500"}`}>
+                        {preset.isFixed ? "固定" : "変動"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">¥</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        placeholder="0"
+                        value={inputVal}
+                        onChange={e => setExpenseInputs(prev => ({ ...prev, [preset.name]: e.target.value }))}
+                        onBlur={e => {
+                          const v = parseInt(e.target.value) || 0;
+                          handleSetExpenseAmount(preset, v);
+                          setExpenseInputs(prev => ({ ...prev, [preset.name]: v > 0 ? String(v) : "" }));
+                        }}
+                        className="w-full text-sm font-medium text-gray-900 bg-gray-50 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:bg-white transition-colors"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Monthly balance summary */}
@@ -1554,7 +1616,6 @@ export default function Dashboard() {
       {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}
       {showLifeEventModal && <LifeEventModal key={editingLifeEvent?.id ?? "new"} event={editingLifeEvent} onSave={handleSaveLifeEvent} onClose={() => { setShowLifeEventModal(false); setEditingLifeEvent(null); }} />}
       {showTemplateModal && <LifeEventTemplateModal onAdd={handleAddDrafts} onClose={() => setShowTemplateModal(false)} />}
-      {showExpenseTemplateModal && <ExpenseTemplateModal onAdd={handleAddExpenseTemplates} onClose={() => setShowExpenseTemplateModal(false)} />}
       {showInsuranceModal && <InsurancePlanModal plan={editingInsurance} onSave={handleSaveInsurance} onClose={() => { setShowInsuranceModal(false); setEditingInsurance(null); }} />}
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
