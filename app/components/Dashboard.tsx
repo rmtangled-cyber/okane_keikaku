@@ -16,7 +16,7 @@ import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
-  MortgageSimPlan, UserProfile, PropertyTaxEntry, calcPropertyTax,
+  MortgageSimPlan, UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
 } from "@/lib/types";
 import {
   getAssets, saveAssets, loadAssets,
@@ -190,7 +190,7 @@ function simulate(
   startYear: number,
   yearsToProject: number,
   mortgageSimPlan?: MortgageSimPlan | null,
-  propertyTaxMonthly?: number,
+  propertyTaxEntries?: PropertyTaxEntry[],
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -262,7 +262,8 @@ function simulate(
 
     // takeHome には既にボーナス手取り月換算が含まれている（incomeItemsFromProfiles 側で合算済み）
     const totalTakeHomeMonthly = takeHome + bonusTakeHome / 12;
-    const propTax = propertyTaxMonthly ?? 0;
+    const propTaxAnnual = (propertyTaxEntries ?? []).reduce((s, e) => s + calcPropertyTaxForYear(e, year), 0);
+    const propTax = propTaxAnnual / 12;
     const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment - propTax + cumulativeMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
@@ -279,7 +280,7 @@ function simulate(
     if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
     if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
-    if (propTax > 0) expenseItems.push({ label: "固定資産税", monthly: propTax });
+    if (propTaxAnnual > 0) expenseItems.push({ label: "固定資産税", monthly: propTaxAnnual / 12 });
     if (cumulativeMonthly < 0) expenseItems.push({ label: "ライフイベント（支出増）", monthly: Math.abs(cumulativeMonthly) });
 
     points.push({
@@ -474,7 +475,7 @@ export default function Dashboard() {
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
     lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
-    propertyTaxAnnual / 12,
+    propertyTaxEntries,
   );
 
   // ── CRUD callbacks ────────────────────────────────────

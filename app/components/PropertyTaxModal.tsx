@@ -22,6 +22,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
   const [isNewBuilding, setIsNewBuilding] = useState(() => entry?.isNewBuilding !== false);
   const [isCertifiedHousing, setIsCertifiedHousing] = useState(() => entry?.isCertifiedHousing ?? false);
   const [buildYear, setBuildYear] = useState(() => entry?.buildYear ? String(entry.buildYear) : "");
+  const [buildingCompleteYear, setBuildingCompleteYear] = useState(() => entry?.buildingCompleteYear ? String(entry.buildingCompleteYear) : "");
   const [note, setNote] = useState(() => entry?.note ?? "");
 
   const previewEntry: PropertyTaxEntry = {
@@ -36,6 +37,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
     isNewBuilding,
     isCertifiedHousing,
     buildYear: buildYear ? parseInt(buildYear) : undefined,
+    buildingCompleteYear: buildingCompleteYear ? parseInt(buildingCompleteYear) : undefined,
     updatedAt: "",
   };
 
@@ -58,6 +60,7 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
       isNewBuilding,
       isCertifiedHousing,
       buildYear: buildYear ? parseInt(buildYear) : undefined,
+      buildingCompleteYear: buildingCompleteYear ? parseInt(buildingCompleteYear) : undefined,
       note: note || undefined,
     });
   }
@@ -212,6 +215,25 @@ export default function PropertyTaxModal({ entry, onSave, onClose }: Props) {
               )}
             </div>
           )}
+
+          {/* ライフプランシミュレーション設定 */}
+          <div className="bg-blue-50 rounded-xl p-4 flex flex-col gap-3">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+              ライフプラン連携
+              <span className="ml-1 text-xs font-normal normal-case text-blue-600">建物完成年を設定すると税額が自動で切り替わります</span>
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">建物完成予定年（西暦）</label>
+              <input type="number" value={buildingCompleteYear} onChange={e => setBuildingCompleteYear(e.target.value)}
+                placeholder="例: 2027（未入力=現状の税額で固定）" min={2020} max={2060} className={inputCls} />
+              {buildingCompleteYear && (
+                <p className="text-xs text-blue-600 mt-1">
+                  〜{parseInt(buildingCompleteYear) - 1}年：更地税額 ／ {buildingCompleteYear}年〜：住宅用地軽減適用
+                  {fixedResult?.newBuildingQualifies && `（最初の${fixedResult.newBuildingReductionYears}年間は新築半額軽減）`}
+                </p>
+              )}
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">メモ（任意）</label>
