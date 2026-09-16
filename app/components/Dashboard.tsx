@@ -1309,7 +1309,9 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
                 <AreaChart data={simData} onClick={(e) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const pt = (e as any)?.activePayload?.[0]?.payload as SimPoint | undefined;
+                  const ev = e as any;
+                  const pt: SimPoint | undefined = ev?.activePayload?.[0]?.payload
+                    ?? (ev?.activeLabel != null ? simData.find(p => p.year === ev.activeLabel) : undefined);
                   if (pt) setSelectedSimPoint(prev => prev?.year === pt.year ? null : pt);
                 }} style={{ cursor: "pointer" }}>
                   <defs>
