@@ -223,6 +223,8 @@ export interface PropertyTaxEntry {
   isNewBuilding?: boolean;      // 新築かどうか（未設定=新築）
   isCertifiedHousing?: boolean; // 長期優良住宅認定
   buildYear?: number;           // 築年（中古住宅）
+  // ライフプランシミュレーション用（任意）
+  buildingCompleteYear?: number; // 建物完成予定年（これ以降に住宅用地軽減・新築軽減を適用）
   note?: string;
   updatedAt: string;
 }
@@ -329,6 +331,29 @@ export function calcAcquisitionTax(e: PropertyTaxEntry): {
   const landTax = Math.max(0, landBaseTax - landReduction);
 
   return { buildingDeduction, buildingTaxBase, buildingTax, landBaseTax, landReduction, landTax, total: buildingTax + landTax, qualifiesForReduction };
+}
+
+// 年ごとの固定資産税年額を返す（ライフプランシミュレーション用）
+// buildingCompleteYear が設定されている場合：
+//   完成前 → isResidential=false（更地扱い）、buildingValue=0 で計算
+//   完成年以降 → 通常計算
+//   新築軽減期間（完成年〜完成年+reductionYears-1）→ 軽減後税額
+export function calcPropertyTaxForYear(e: PropertyTaxEntry, year: number): number {
+  const completeYear = e.buildingCompleteYear;
+  if (!completeYear || year >= completeYear) {
+    // 建物あり（または buildingCompleteYear 未設定）
+    const r = calcPropertyTax(e);
+    if (!completeYear) return r.total;
+    // 新築軽減期間かどうか
+    const reductionYears = r.newBuildingReductionYears;
+    if (reductionYears > 0 && year < completeYear + reductionYears) {
+      return r.totalReduced;
+    }
+    return r.total;
+  }
+  // 建物未完成 → 更地として計算（住宅用地軽減なし、建物税額なし）
+  const preBuild: PropertyTaxEntry = { ...e, isResidential: false, buildingValue: 0 };
+  return calcPropertyTax(preBuild).total;
 }
 
 // ライフイベント
