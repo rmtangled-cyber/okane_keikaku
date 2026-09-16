@@ -80,7 +80,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
 
 // ── Life Plan Simulation ───────────────────────────────────────────────────────
 
@@ -318,7 +318,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "家計簿", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "投資信託", "生活費", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -720,10 +720,10 @@ export default function Dashboard() {
             </button>
           </div>
         );
-      case "家計簿":
-        return <button onClick={() => { setEditingSpending(null); setShowSpendingModal(true); }}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
-          <Plus size={15} /> 記録を追加</button>;
+      case "生活費":
+        return <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
+          <Plus size={15} /> 支出を追加</button>;
       case "ライフプラン":
         return <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
@@ -810,7 +810,7 @@ export default function Dashboard() {
             { key: "概要", icon: <BarChart2 size={14} /> },
             { key: "株式", icon: <TrendingUp size={14} /> },
             { key: "投資信託", icon: <Layers size={14} /> },
-            { key: "家計簿", icon: <BookOpen size={14} /> },
+            { key: "生活費", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
             { key: "固定資産税", icon: <Landmark size={14} /> },
             { key: "申請チェック", icon: <CheckCircle2 size={14} /> },
@@ -1079,108 +1079,46 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── 家計簿 ────────────────────────────────────── */}
-        {tab === "家計簿" && (
+        {/* ── 生活費 ────────────────────────────────────── */}
+        {tab === "生活費" && (
           <div className="space-y-5">
-            {/* Month navigator */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            {/* Expenses */}
+            <div>
               <div className="flex items-center justify-between mb-3">
-                <button onClick={() => shiftMonth(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <ChevronLeft size={18} />
-                </button>
-                <div className="text-center">
-                  <div className="font-bold text-gray-900 text-lg">
-                    {selectedMonth.replace("-", "年")}月
-                  </div>
-                  <div className="text-xs text-gray-400">{monthRecords.length}件 · 合計 ¥{monthTotal.toLocaleString()}</div>
+                <h3 className="text-sm font-semibold text-gray-700">月次生活費</h3>
+                <div className="flex gap-3 text-xs text-gray-500">
+                  <span>固定費 ¥{fixedExpenses.toLocaleString()}</span>
+                  <span>変動費 ¥{variableExpenses.toLocaleString()}</span>
                 </div>
-                <button onClick={() => shiftMonth(1)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <ChevronRight size={18} />
-                </button>
               </div>
-
-              {/* Category breakdown */}
-              {categoryTotals.length > 0 && (
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {categoryTotals.slice(0, 10).map(([cat, amt]) => {
-                    const budget = budgetMap.get(cat);
-                    const over = budget != null && amt > budget;
-                    return (
-                      <div key={cat} className={`rounded-lg p-2 text-center ${over ? "bg-red-50 border border-red-100" : "bg-gray-50"}`}>
-                        <div className="text-xs text-gray-500 truncate">{cat}</div>
-                        <div className={`text-xs font-bold ${over ? "text-red-600" : "text-gray-800"}`}>
-                          ¥{amt >= 10000 ? `${Math.round(amt / 1000)}k` : amt.toLocaleString()}
-                        </div>
-                        {budget != null && (
-                          <div className="text-xs text-gray-400">/{budget >= 10000 ? `${Math.round(budget / 1000)}k` : budget.toLocaleString()}</div>
-                        )}
-                      </div>
-                    );
-                  })}
+              <p className="text-xs text-gray-400 mb-3">ここで登録した金額がライフプランのシミュレーションに反映されます。</p>
+              {expenses.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-6 text-center text-gray-400 shadow-sm">
+                  <p className="text-sm">生活費が登録されていません</p>
+                  <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }} className="mt-2 text-xs text-rose-600 hover:underline">生活費を追加する</button>
                 </div>
+              ) : (
+                <div className="space-y-2">{expenses.map(e => <ExpenseCard key={e.id} expense={e} onEdit={e => { setEditingExpense(e); setShowExpenseModal(true); }} onDelete={handleDeleteExpense} />)}</div>
               )}
             </div>
 
-            {/* Budget vs Actual table */}
-            {expenses.length > 0 && categoryTotals.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-50 text-sm font-semibold text-gray-700">予算対比</div>
-                <div className="divide-y divide-gray-50">
-                  {expenses.map(e => {
-                    const actual = monthRecords.filter(r => r.category === e.category).reduce((s, r) => s + r.amount, 0);
-                    const diff = e.amount - actual;
-                    return (
-                      <div key={e.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
-                        <span className="flex-1 text-gray-700">{e.name}</span>
-                        <span className="text-gray-400 text-xs">{e.category}</span>
-                        <span className="w-20 text-right text-gray-500">予 ¥{e.amount.toLocaleString()}</span>
-                        <span className="w-20 text-right font-medium text-gray-800">実 ¥{actual.toLocaleString()}</span>
-                        <span className={`w-20 text-right text-xs font-medium ${diff >= 0 ? "text-green-600" : "text-red-600"}`}>
-                          {diff >= 0 ? "+" : ""}¥{diff.toLocaleString()}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Transaction list */}
-            {monthRecords.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 shadow-sm">
-                <BookOpen size={32} className="mx-auto mb-3 text-gray-200" />
-                <p className="text-sm">この月の記録がありません</p>
-                <button onClick={() => { setEditingSpending(null); setShowSpendingModal(true); }}
-                  className="mt-2 text-xs text-emerald-600 hover:underline">支出を記録する</button>
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="divide-y divide-gray-50">
-                  {monthRecords.map(r => (
-                    <div key={r.id} className="px-4 py-3 flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-12 shrink-0">{r.date.slice(5).replace("-", "/")}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 font-medium`}
-                        style={{ background: EXPENSE_CATEGORY_COLOR[r.category] + "20", color: EXPENSE_CATEGORY_COLOR[r.category] }}>
-                        {r.category}
-                      </span>
-                      <span className="flex-1 text-sm text-gray-800 truncate">{r.name}</span>
-                      {r.note && <span className="text-xs text-gray-400 truncate hidden sm:block max-w-[100px]">{r.note}</span>}
-                      <span className="font-bold text-gray-900 shrink-0">¥{r.amount.toLocaleString()}</span>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => { setEditingSpending(r); setShowSpendingModal(true); }}
-                          className="p-1.5 text-gray-300 hover:text-blue-600 rounded transition-colors">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button onClick={() => { if (confirm("削除しますか？")) handleDeleteSpending(r.id); }}
-                          className="p-1.5 text-gray-300 hover:text-red-600 rounded transition-colors">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-4 py-2 bg-gray-50 flex justify-between text-sm font-bold text-gray-700 border-t border-gray-100">
-                  <span>合計</span><span>¥{monthTotal.toLocaleString()}</span>
+            {/* Monthly balance summary */}
+            {(monthlyTakeHome > 0 || totalExpenses > 0) && (
+              <div className={`rounded-2xl p-5 ${monthlySavings >= 0 ? "bg-green-50 border border-green-100" : "bg-red-50 border border-red-100"}`}>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">月間収支サマリー</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">手取り収入</span><span className="font-medium text-teal-700">+¥{monthlyTakeHome.toLocaleString()}</span></div>
+                  {(fixedExpenses + variableExpenses) > 0 && <div className="flex justify-between"><span className="text-gray-600">生活費</span><span className="font-medium text-rose-600">−¥{(fixedExpenses + variableExpenses).toLocaleString()}</span></div>}
+                  {insurancePremiums > 0 && <div className="flex justify-between"><span className="text-gray-600">保険料</span><span className="font-medium text-rose-600">−¥{insurancePremiums.toLocaleString()}</span></div>}
+                  {loanPaymentsTotal > 0 && <div className="flex justify-between"><span className="text-gray-600">ローン返済</span><span className="font-medium text-rose-600">−¥{loanPaymentsTotal.toLocaleString()}</span></div>}
+                  {mortgageMonthlyNow > 0 && <div className="flex justify-between"><span className="text-gray-600">{mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}（住宅ローン）` : "住宅ローン"}</span><span className="font-medium text-rose-600">−¥{mortgageMonthlyNow.toLocaleString()}</span></div>}
+                  <div className={`flex justify-between font-bold pt-2 border-t ${monthlySavings >= 0 ? "border-green-200" : "border-red-200"}`}>
+                    <span className="text-gray-800">月間収支</span>
+                    <span className={monthlySavings >= 0 ? "text-green-700" : "text-red-700"}>{monthlySavings >= 0 ? "+" : ""}¥{monthlySavings.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>年間貯蓄予測</span><span>{(monthlySavings * 12) >= 0 ? "+" : ""}¥{(monthlySavings * 12).toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             )}
