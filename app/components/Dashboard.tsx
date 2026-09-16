@@ -784,10 +784,6 @@ export default function Dashboard() {
             <h1 className="text-xl font-bold text-gray-900">お金計画</h1>
           </div>
           <div className="flex gap-2 items-center">
-            <button onClick={handleSnapshot} title="今月のスナップショットを記録"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <RefreshCw size={15} /><span className="hidden sm:inline">記録</span>
-            </button>
             <button onClick={() => exportToCSV(assets)} title="CSVエクスポート"
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               <Download size={15} /><span className="hidden sm:inline">CSV</span>
@@ -796,10 +792,6 @@ export default function Dashboard() {
             {!authLoading && (
               user ? (
                 <>
-                <button onClick={handleClearAllData} title="全データを削除"
-                  className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors hidden sm:flex">
-                  全削除
-                </button>
                 <button onClick={signOut} title={`ログアウト (${user.displayName ?? user.email})`}
                   className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors">
                   {user.photoURL
