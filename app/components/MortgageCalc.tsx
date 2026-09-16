@@ -229,7 +229,6 @@ const fmt = (v: number) =>
 
 export default function MortgageCalc() {
   const { user } = useAuth();
-  const [principalMan, setPrincipalMan] = useState("");
   const [termYears, setTermYears] = useState("35");
   const [bankName, setBankName] = useState("千葉銀行");
   const [bankRate, setBankRate] = useState("1.075");
@@ -248,7 +247,6 @@ export default function MortgageCalc() {
     if (!user) return;
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
-      setPrincipalMan(plan.principalMan);
       setTermYears(plan.termYears);
       setBankName(plan.bankName);
       setBankRate(plan.bankRate);
@@ -290,7 +288,9 @@ export default function MortgageCalc() {
       const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
       await Promise.race([
         saveMortgageSimPlan({
-          bankName, bankRate, principalMan, termYears,
+          bankName, bankRate,
+          principalMan: String(drawdowns.reduce((s, d) => s + d.amountMan, 0)),
+          termYears,
           monthlyIncomeMan,
           periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
           drawdownSchedule: drawdowns.length > 0 ? drawdowns : undefined,
@@ -306,7 +306,7 @@ export default function MortgageCalc() {
     }
   };
 
-  const principal = (parseFloat(principalMan) || 0) * 10000;
+  const principal = drawdowns.reduce((s, d) => s + d.amountMan, 0) * 10000;
   const termYearsNum = parseInt(termYears) || 35;
   const termMonths = termYearsNum * 12;
   const rate = parseFloat(bankRate) || 0;
@@ -455,18 +455,19 @@ export default function MortgageCalc() {
         <h3 className="text-sm font-semibold text-gray-800 mb-4">ローン条件</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">借入額（万円）</label>
-            <input type="number" value={principalMan} onChange={e => setPrincipalMan(e.target.value)}
-              placeholder="4000"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            {principal > 0 && <p className="text-xs text-gray-400 mt-1">{fmt(principal)}円</p>}
-          </div>
-          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">返済期間</label>
             <select value={termYears} onChange={e => setTermYears(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
               {[20, 25, 30, 35, 40, 45].map(y => <option key={y} value={y}>{y}年</option>)}
             </select>
+          </div>
+          <div className="flex items-end">
+            {principal > 0 && (
+              <div>
+                <div className="text-xs text-gray-500 mb-1">借入総額（分割実行の合計）</div>
+                <div className="text-sm font-bold text-gray-800">{fmt(principal)}円</div>
+              </div>
+            )}
           </div>
           <div className="col-span-2 pt-1 border-t border-gray-50">
             <label className="block text-xs font-medium text-gray-600 mb-1">月収（万円）<span className="ml-1 text-gray-400 font-normal">返済負担率の計算に使用</span></label>
@@ -481,6 +482,122 @@ export default function MortgageCalc() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Drawdown schedule — moved before BOJ scenarios */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2">
+            <Calendar size={15} className="text-indigo-500 shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">融資実行スケジュール</h3>
+              <p className="text-xs text-gray-400 mt-0.5">各トランシェの実行年月と金額を入力してください。1回だけ入力すれば通常のローンと同じ計算になります</p>
+            </div>
+          </div>
+        </div>
+
+        {drawdowns.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">実行年月</th>
+                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium">金額（万円）</th>
+                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">ラベル</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {drawdowns.map(d => (
+                  <tr key={d.id}>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="month"
+                        value={d.yearMonth}
+                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, yearMonth: e.target.value } : x))}
+                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          value={d.amountMan || ""}
+                          min={0}
+                          step={100}
+                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
+                          className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <span className="text-gray-500">万</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="text"
+                        value={d.label ?? ""}
+                        placeholder="例: 契約金30%"
+                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, label: e.target.value } : x))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
+                        className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {drawdowns.length > 0 && (
+          <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
+            合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
+            {(() => {
+              const sorted = [...drawdowns].filter(d => d.yearMonth).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+              const last = sorted[sorted.length - 1];
+              return last ? `　最終実行: ${last.yearMonth}以降に元利均等返済スタート` : null;
+            })()}
+          </div>
+        )}
+
+        {drawdowns.length === 0 && (
+          <div className="px-5 py-5 text-center">
+            <p className="text-xs text-gray-400 mb-3">融資実行日と金額を追加してください（1件 = 通常の一括融資）</p>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                setDrawdowns([{ id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+            >
+              <Plus size={14} />
+              融資実行を追加
+            </button>
+          </div>
+        )}
+
+        {drawdowns.length > 0 && (
+          <div className="px-5 py-3 border-t border-gray-50">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+              }}
+              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              <Plus size={13} />
+              さらに追加
+            </button>
+          </div>
+        )}
       </div>
 
       {/* BOJ Scenario auto-setup */}
@@ -560,122 +677,6 @@ export default function MortgageCalc() {
           )}
         </div>
       )}
-
-      {/* Drawdown schedule */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
-          <div className="flex items-center gap-2">
-            <Calendar size={15} className="text-indigo-500 shrink-0" />
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">分割実行スケジュール</h3>
-              <p className="text-xs text-gray-400 mt-0.5">建物工事中の段階融資を設定します。設定するとライフプランに反映されます</p>
-            </div>
-          </div>
-        </div>
-
-        {drawdowns.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">実行年月</th>
-                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium">金額（万円）</th>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">ラベル</th>
-                  <th className="px-4 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {drawdowns.map(d => (
-                  <tr key={d.id}>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="month"
-                        value={d.yearMonth}
-                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, yearMonth: e.target.value } : x))}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          value={d.amountMan || ""}
-                          min={0}
-                          step={100}
-                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
-                          className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        />
-                        <span className="text-gray-500">万</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="text"
-                        value={d.label ?? ""}
-                        placeholder="例: 契約金30%"
-                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, label: e.target.value } : x))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <button
-                        onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
-                        className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {drawdowns.length > 0 && (
-          <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
-            合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
-            {(() => {
-              const sorted = [...drawdowns].filter(d => d.yearMonth).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
-              const last = sorted[sorted.length - 1];
-              return last ? `　最終実行: ${last.yearMonth}以降に元利均等返済スタート` : null;
-            })()}
-          </div>
-        )}
-
-        {drawdowns.length === 0 && (
-          <div className="px-5 py-5 text-center">
-            <p className="text-xs text-gray-400 mb-3">建物工事中に複数回融資が実行される場合は、ここにスケジュールを登録してください</p>
-            <button
-              onClick={() => {
-                const now = new Date();
-                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                setDrawdowns([{ id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
-            >
-              <Plus size={14} />
-              分割実行を追加
-            </button>
-          </div>
-        )}
-
-        {drawdowns.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50">
-            <button
-              onClick={() => {
-                const now = new Date();
-                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
-              }}
-              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              <Plus size={13} />
-              さらに追加
-            </button>
-          </div>
-        )}
-      </div>
 
       {/* Rate change plan */}
       {principal > 0 && (
