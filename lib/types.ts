@@ -189,9 +189,10 @@ export interface DrawdownEntry {
 // 物件費用項目
 export interface PropertyCostItem {
   id: string;
-  name: string;       // 費用名（例: 手付金、残金決済）
-  date: string;       // 支払日 "YYYY-MM-DD"
-  amountMan: number;  // 金額（万円）
+  name: string;           // 費用名（例: 手付金、残金決済）
+  date: string;           // 支払日 "YYYY-MM-DD"
+  amountMan: number;      // 金額（万円）
+  paymentType?: "loan" | "self"; // ローン or 自己資金（省略=ローン）
 }
 
 // 物件・契約情報

@@ -86,13 +86,13 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
 
             <div className="space-y-2">
               {costItems.map((item, idx) => (
-                <div key={item.id} className="flex items-center gap-2">
+                <div key={item.id} className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     value={item.name}
                     onChange={e => updateCostItem(item.id, "name", e.target.value)}
                     placeholder="費用名（例: 手付金）"
-                    className={`flex-1 min-w-0 ${inputCls}`}
+                    className={`flex-1 min-w-[120px] ${inputCls}`}
                   />
                   <input
                     type="date"
@@ -110,6 +110,31 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
                       className={`w-24 text-right ${inputCls}`}
                     />
                     <span className="text-xs text-gray-500 whitespace-nowrap">万円</span>
+                  </div>
+                  {/* ローン / 自己資金トグル */}
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => updateCostItem(item.id, "paymentType", "loan")}
+                      className={`px-2.5 py-1.5 transition-colors ${
+                        (item.paymentType ?? "loan") === "loan"
+                          ? "bg-blue-600 text-white font-medium"
+                          : "text-gray-500 hover:bg-gray-50"
+                      }`}
+                    >
+                      ローン
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCostItem(item.id, "paymentType", "self")}
+                      className={`px-2.5 py-1.5 transition-colors border-l border-gray-200 ${
+                        item.paymentType === "self"
+                          ? "bg-amber-500 text-white font-medium"
+                          : "text-gray-500 hover:bg-gray-50"
+                      }`}
+                    >
+                      自己資金
+                    </button>
                   </div>
                   <button
                     type="button"
