@@ -23,7 +23,7 @@ const COLORS: Record<AssetCategory, string> = {
   "その他": "#6b7280",
 };
 
-type Tab = "概要" | "資産一覧" | "目標" | "マイホーム";
+type Tab = "概要" | "資産一覧" | "目標" | "住宅ローン";
 
 export default function Dashboard() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -117,7 +117,7 @@ export default function Dashboard() {
         </div>
         {/* Tabs */}
         <div className="max-w-4xl mx-auto px-4 flex gap-6 border-t border-gray-50">
-          {(["概要", "資産一覧", "目標", "マイホーム"] as Tab[]).map(t => (
+          {(["概要", "資産一覧", "目標", "住宅ローン"] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -241,8 +241,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* マイホームタブ */}
-        {tab === "マイホーム" && (
+        {/* 住宅ローンタブ */}
+        {tab === "住宅ローン" && (
           <HomePurchaseTab home={home} onChange={setHome} />
         )}
       </main>
