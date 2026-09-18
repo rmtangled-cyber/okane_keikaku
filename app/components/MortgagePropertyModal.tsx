@@ -4,14 +4,21 @@ import { useState } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import type { MortgageProperty, PropertyCostItem } from "../../lib/types";
 
+export interface BorrowerOption {
+  id: "self" | "spouse";
+  label: string;
+}
+
 interface Props {
   property?: MortgageProperty | null;
+  borrowerOptions?: BorrowerOption[];
   onSave: (p: MortgageProperty) => void;
   onClose: () => void;
 }
 
-export default function MortgagePropertyModal({ property, onSave, onClose }: Props) {
+export default function MortgagePropertyModal({ property, borrowerOptions, onSave, onClose }: Props) {
   const [propertyName, setPropertyName] = useState(property?.propertyName ?? "");
+  const [borrowerId, setBorrowerId] = useState<"self" | "spouse" | "">(property?.borrowerId ?? "self");
   const [note, setNote] = useState(property?.note ?? "");
   const [bonusRepaymentMan, setBonusRepaymentMan] = useState(
     property?.bonusRepaymentMan ? String(property.bonusRepaymentMan) : ""
@@ -42,6 +49,7 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
     onSave({
       id: property?.id ?? `prop_${Date.now()}`,
       propertyName: propertyName.trim(),
+      borrowerId: borrowerId || undefined,
       costItems: validItems,
       bonusRepaymentMan: bonus > 0 ? bonus : undefined,
       note: note || undefined,
@@ -79,6 +87,29 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
               className={`w-full ${inputCls}`}
             />
           </div>
+
+          {/* 借入名義人 */}
+          {borrowerOptions && borrowerOptions.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">借入名義人</label>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                {borrowerOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setBorrowerId(opt.id)}
+                    className={`flex-1 px-3 py-2 transition-colors first:border-r first:border-gray-200 ${
+                      borrowerId === opt.id
+                        ? "bg-blue-600 text-white font-medium"
+                        : "text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 費用一覧 */}
           <div>

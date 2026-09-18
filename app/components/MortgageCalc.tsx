@@ -7,10 +7,10 @@ import {
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
 import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, Pencil, Trash2 } from "lucide-react";
-import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty } from "../../lib/storage";
+import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty, loadUserProfile } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
-import type { DrawdownEntry, MortgageProperty, PropertyCostItem } from "../../lib/types";
-import MortgagePropertyModal from "./MortgagePropertyModal";
+import type { DrawdownEntry, MortgageProperty, PropertyCostItem, UserProfile } from "../../lib/types";
+import MortgagePropertyModal, { type BorrowerOption } from "./MortgagePropertyModal";
 
 // ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
 
@@ -296,6 +296,7 @@ export default function MortgageCalc() {
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
   const [show5Year, setShow5Year] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // 旧フォーマットの MortgageProperty → 新フォーマット（costItems）へマイグレーション
   function migrateProperty(raw: Record<string, unknown>): MortgageProperty {
@@ -340,6 +341,7 @@ export default function MortgageCalc() {
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
     if (!user) return;
+    loadUserProfile().then(p => { if (p) setUserProfile(p); });
     loadMortgageProperties().then(async items => {
       if (items.length > 0) {
         setProperties(items.map(p => migrateProperty(p as unknown as Record<string, unknown>)));
@@ -468,6 +470,19 @@ export default function MortgageCalc() {
       })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [JSON.stringify(rateChanges), rate, termYearsNum]);
+
+  const borrowerOptions = useMemo((): BorrowerOption[] => {
+    const selfLabel = userProfile?.displayName || "自分";
+    const opts: BorrowerOption[] = [{ id: "self", label: selfLabel }];
+    const spouse = userProfile?.familyMembers?.find(m => m.type === "spouse");
+    if (spouse) opts.push({ id: "spouse", label: spouse.name || "配偶者" });
+    return opts;
+  }, [userProfile]);
+
+  const borrowerLabel = (prop: MortgageProperty) => {
+    if (!prop.borrowerId) return null;
+    return borrowerOptions.find(o => o.id === prop.borrowerId)?.label ?? null;
+  };
 
   const bonusSemiAnnual = useMemo(() =>
     properties.reduce((s, p) => s + ((p.bonusRepaymentMan ?? 0) * 10000), 0),
@@ -630,7 +645,12 @@ export default function MortgageCalc() {
               return (
                 <div key={prop.id} className="px-5 py-4 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-800 truncate">{prop.propertyName || "（物件名なし）"}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-800 truncate">{prop.propertyName || "（物件名なし）"}</span>
+                      {borrowerLabel(prop) && (
+                        <span className="text-xs bg-blue-50 text-blue-600 font-medium rounded-full px-2 py-0.5 shrink-0">{borrowerLabel(prop)}</span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
                       {loanTotal > 0 && <span className="text-blue-600">ローン {loanTotal.toLocaleString()}万円</span>}
                       {selfTotal > 0 && <span className="text-amber-600">自己資金 {selfTotal.toLocaleString()}万円</span>}
@@ -666,6 +686,7 @@ export default function MortgageCalc() {
       {showPropertyModal && (
         <MortgagePropertyModal
           property={editingProperty}
+          borrowerOptions={borrowerOptions}
           onSave={handlePropertySave}
           onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
         />
