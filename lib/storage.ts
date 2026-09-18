@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, UserProfile, PropertyTaxEntry } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry } from "./types";
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
@@ -197,6 +197,19 @@ export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
     const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageSimPlan) : null;
+  } catch { return null; }
+}
+
+// Mortgage Property Info (single doc per user)
+export async function saveMortgageProperty(prop: MortgageProperty): Promise<void> {
+  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageProperty", "default");
+  await setDoc(ref, stripUndefined(prop));
+}
+export async function loadMortgageProperty(): Promise<MortgageProperty | null> {
+  try {
+    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageProperty", "default");
+    const snap = await getDoc(ref);
+    return snap.exists() ? (snap.data() as MortgageProperty) : null;
   } catch { return null; }
 }
 

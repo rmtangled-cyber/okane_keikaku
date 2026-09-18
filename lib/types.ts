@@ -178,9 +178,22 @@ export interface LoanPlan {
 // 住宅ローンシミュレーション設定
 export interface DrawdownEntry {
   id: string;
-  yearMonth: string;  // "YYYY-MM"
+  date: string;       // "YYYY-MM-DD"
   amountMan: number;  // 万円
   label?: string;     // 例: "契約金30%"
+}
+
+// 物件・契約情報
+export interface MortgageProperty {
+  propertyName: string;      // 物件名
+  contractDate?: string;     // 契約日 "YYYY-MM-DD"
+  priceTotalMan: string;     // 物件価格（万円）
+  depositMan: string;        // 手付金（万円）
+  midPaymentMan: string;     // 中間金（万円）
+  finalSettlementDate?: string; // 残金決済日 "YYYY-MM-DD"
+  miscCostMan: string;       // 諸費用（万円）
+  note?: string;
+  updatedAt: string;
 }
 
 export interface MortgageSimPlan {

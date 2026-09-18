@@ -6,10 +6,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar } from "lucide-react";
-import { loadMortgageSimPlan, saveMortgageSimPlan } from "../../lib/storage";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, FileText } from "lucide-react";
+import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperty, saveMortgageProperty } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
-import type { DrawdownEntry } from "../../lib/types";
+import type { DrawdownEntry, MortgageProperty } from "../../lib/types";
 
 // ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
 
@@ -241,10 +241,25 @@ export default function MortgageCalc() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
   const [drawdowns, setDrawdowns] = useState<DrawdownEntry[]>([]);
+  const [property, setProperty] = useState<MortgageProperty>({
+    propertyName: "",
+    contractDate: "",
+    priceTotalMan: "",
+    depositMan: "",
+    midPaymentMan: "",
+    finalSettlementDate: "",
+    miscCostMan: "",
+    note: "",
+    updatedAt: "",
+  });
+  const [propSaveStatus, setPropSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
     if (!user) return;
+    loadMortgageProperty().then(prop => {
+      if (prop) setProperty(prop);
+    });
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
       setTermYears(plan.termYears);
@@ -303,6 +318,19 @@ export default function MortgageCalc() {
     } catch {
       setSaveStatus("error");
       setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+  };
+
+  const handlePropSave = async () => {
+    if (!user) { setPropSaveStatus("error"); setTimeout(() => setPropSaveStatus("idle"), 2000); return; }
+    setPropSaveStatus("saving");
+    try {
+      await saveMortgageProperty({ ...property, updatedAt: new Date().toISOString() });
+      setPropSaveStatus("saved");
+      setTimeout(() => setPropSaveStatus("idle"), 2000);
+    } catch {
+      setPropSaveStatus("error");
+      setTimeout(() => setPropSaveStatus("idle"), 3000);
     }
   };
 
@@ -450,6 +478,122 @@ export default function MortgageCalc() {
         )}
       </div>
 
+      {/* Property / contract info */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText size={15} className="text-blue-500 shrink-0" />
+            <h3 className="text-sm font-semibold text-gray-800">物件・契約情報</h3>
+          </div>
+          <button
+            onClick={handlePropSave}
+            disabled={propSaveStatus === "saving"}
+            className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
+              propSaveStatus === "saved" ? "border-green-300 text-green-600 bg-green-50" :
+              propSaveStatus === "error" ? "border-red-300 text-red-600" :
+              "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Save size={11} />
+            {propSaveStatus === "saving" ? "保存中..." : propSaveStatus === "saved" ? "保存済み" : propSaveStatus === "error" ? "失敗" : "保存"}
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">物件名</label>
+              <input type="text" value={property.propertyName} placeholder="例: ○○マンション 302号室"
+                onChange={e => setProperty(p => ({ ...p, propertyName: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">契約日</label>
+              <input type="date" value={property.contractDate ?? ""}
+                onChange={e => setProperty(p => ({ ...p, contractDate: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">物件価格（万円）</label>
+              <input type="number" value={property.priceTotalMan} placeholder="4500" min={0}
+                onChange={e => setProperty(p => ({ ...p, priceTotalMan: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">手付金（万円）</label>
+              <input type="number" value={property.depositMan} placeholder="450" min={0}
+                onChange={e => setProperty(p => ({ ...p, depositMan: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">中間金（万円）</label>
+              <input type="number" value={property.midPaymentMan} placeholder="0" min={0}
+                onChange={e => setProperty(p => ({ ...p, midPaymentMan: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">残金決済日</label>
+              <input type="date" value={property.finalSettlementDate ?? ""}
+                onChange={e => setProperty(p => ({ ...p, finalSettlementDate: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">諸費用（万円）</label>
+              <input type="number" value={property.miscCostMan} placeholder="150" min={0}
+                onChange={e => setProperty(p => ({ ...p, miscCostMan: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+          </div>
+          {/* 支払いサマリー */}
+          {(property.priceTotalMan || property.depositMan || property.midPaymentMan || property.miscCostMan) && (
+            <div className="bg-gray-50 rounded-xl p-3 text-xs space-y-1.5">
+              {property.depositMan && parseFloat(property.depositMan) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>手付金{property.contractDate ? `（${property.contractDate}）` : ""}</span>
+                  <span className="font-medium">¥{parseFloat(property.depositMan).toLocaleString()}万</span>
+                </div>
+              )}
+              {property.midPaymentMan && parseFloat(property.midPaymentMan) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>中間金</span>
+                  <span className="font-medium">¥{parseFloat(property.midPaymentMan).toLocaleString()}万</span>
+                </div>
+              )}
+              {(() => {
+                const price = parseFloat(property.priceTotalMan) || 0;
+                const dep = parseFloat(property.depositMan) || 0;
+                const mid = parseFloat(property.midPaymentMan) || 0;
+                const loan = drawdowns.reduce((s, d) => s + d.amountMan, 0);
+                const balance = price - dep - mid - loan;
+                return balance > 0 ? (
+                  <div className="flex justify-between text-gray-600">
+                    <span>残金決済{property.finalSettlementDate ? `（${property.finalSettlementDate}）` : ""}</span>
+                    <span className="font-medium">¥{balance.toLocaleString()}万</span>
+                  </div>
+                ) : null;
+              })()}
+              {property.miscCostMan && parseFloat(property.miscCostMan) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>諸費用</span>
+                  <span className="font-medium">¥{parseFloat(property.miscCostMan).toLocaleString()}万</span>
+                </div>
+              )}
+              {property.priceTotalMan && parseFloat(property.priceTotalMan) > 0 && (
+                <div className="flex justify-between text-gray-800 font-semibold border-t border-gray-200 pt-1.5 mt-1">
+                  <span>合計支払い（諸費用込み）</span>
+                  <span>¥{((parseFloat(property.priceTotalMan) || 0) + (parseFloat(property.miscCostMan) || 0)).toLocaleString()}万</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
+            <textarea value={property.note ?? ""} rows={2} placeholder="備考など"
+              onChange={e => setProperty(p => ({ ...p, note: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+          </div>
+        </div>
+      </div>
+
       {/* Loan conditions */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-800 mb-4">ローン条件</h3>
@@ -512,9 +656,9 @@ export default function MortgageCalc() {
                   <tr key={d.id}>
                     <td className="px-4 py-2.5">
                       <input
-                        type="month"
-                        value={d.yearMonth}
-                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, yearMonth: e.target.value } : x))}
+                        type="date"
+                        value={d.date}
+                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, date: e.target.value } : x))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                       />
                     </td>
@@ -559,9 +703,9 @@ export default function MortgageCalc() {
           <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
             合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
             {(() => {
-              const sorted = [...drawdowns].filter(d => d.yearMonth).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+              const sorted = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
               const last = sorted[sorted.length - 1];
-              return last ? `　最終実行: ${last.yearMonth}以降に元利均等返済スタート` : null;
+              return last ? `　最終実行: ${last.date}以降に元利均等返済スタート` : null;
             })()}
           </div>
         )}
@@ -572,8 +716,8 @@ export default function MortgageCalc() {
             <button
               onClick={() => {
                 const now = new Date();
-                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                setDrawdowns([{ id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+                const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+                setDrawdowns([{ id: `dd_${Date.now()}`, date: d, amountMan: 0, label: "" }]);
               }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
             >
@@ -588,8 +732,8 @@ export default function MortgageCalc() {
             <button
               onClick={() => {
                 const now = new Date();
-                const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, yearMonth: ym, amountMan: 0, label: "" }]);
+                const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, date: d, amountMan: 0, label: "" }]);
               }}
               className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
             >
