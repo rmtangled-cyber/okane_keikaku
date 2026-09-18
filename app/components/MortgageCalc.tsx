@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Plus, Calendar, Pencil, Trash2 } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty, loadUserProfile } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
 import type { DrawdownEntry, MortgageProperty, PropertyCostItem, PropertyRateChange, UserProfile } from "../../lib/types";
@@ -208,7 +208,6 @@ interface BorrowerSimData {
 export default function MortgageCalc() {
   const { user } = useAuth();
   const [borrowerIncomes, setBorrowerIncomes] = useState<Record<string, string>>({});
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [properties, setProperties] = useState<MortgageProperty[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
@@ -266,39 +265,26 @@ export default function MortgageCalc() {
     });
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
-      if (plan.monthlyIncomeMan) setBorrowerIncomes(prev => ({ ...prev, self: plan.monthlyIncomeMan! }));
+      if (plan.borrowerIncomes) {
+        setBorrowerIncomes(plan.borrowerIncomes);
+      } else if (plan.monthlyIncomeMan) {
+        setBorrowerIncomes(prev => ({ ...prev, self: plan.monthlyIncomeMan! }));
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const handleSave = async () => {
-    if (!user) {
-      setSaveStatus("login-required");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-      return;
-    }
-    setSaveStatus("saving");
-    try {
-      const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
-      await Promise.race([
-        saveMortgageSimPlan({
-          bankName: "",
-          bankRate: "",
-          principalMan: "0",
-          termYears: "35",
-          monthlyIncomeMan: borrowerIncomes["self"] ?? "",
-          periodSettings: [],
-          updatedAt: new Date().toISOString(),
-        }),
-        timeout,
-      ]);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch {
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-    }
-  };
+  useEffect(() => {
+    if (!user || Object.keys(borrowerIncomes).length === 0) return;
+    saveMortgageSimPlan({
+      bankName: "", bankRate: "", principalMan: "0", termYears: "35",
+      monthlyIncomeMan: borrowerIncomes["self"] ?? "",
+      borrowerIncomes,
+      periodSettings: [],
+      updatedAt: new Date().toISOString(),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [borrowerIncomes, user]);
 
   const handlePropertySave = (prop: MortgageProperty) => {
     setProperties(prev => {
@@ -380,7 +366,22 @@ export default function MortgageCalc() {
       let totalInterest = 0;
       let finalLumpSum = 0;
 
-      for (const prop of props) {
+      // Find reference date: earliest last-disbursement date across properties
+      const propStartDates = props.map(prop => {
+        const lastDate = (prop.costItems ?? [])
+          .filter(c => (c.paymentType ?? "loan") === "loan" && c.date)
+          .map(c => c.date!)
+          .sort()
+          .at(-1);
+        return lastDate ? new Date(lastDate) : new Date();
+      });
+      const refDate = propStartDates.reduce(
+        (min, d) => d < min ? d : min,
+        propStartDates[0] ?? new Date()
+      );
+
+      for (let pi = 0; pi < props.length; pi++) {
+        const prop = props[pi];
         const propPrincipal = (prop.costItems ?? [])
           .filter(c => (c.paymentType ?? "loan") === "loan")
           .reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
@@ -413,23 +414,37 @@ export default function MortgageCalc() {
         totalInterest += propSim.totalInterest;
         finalLumpSum += propSim.finalLumpSum;
 
-        if (propSim.periods.length > 0) initialMonthly += propSim.periods[0].payment;
-        if (propTermYears > maxTermYears) {
-          maxTermYears = propTermYears;
+        // Calculate year offset from reference date
+        const propStart = propStartDates[pi];
+        const offsetMonths =
+          (propStart.getFullYear() - refDate.getFullYear()) * 12 +
+          (propStart.getMonth() - refDate.getMonth());
+        const offsetYears = Math.round(offsetMonths / 12);
+
+        // Only add initial monthly payment for properties starting at offset 0
+        if (offsetYears === 0 && propSim.periods.length > 0) {
+          initialMonthly += propSim.periods[0].payment;
+        }
+
+        const effectiveTermYears = offsetYears + propTermYears;
+        if (effectiveTermYears > maxTermYears) {
+          maxTermYears = effectiveTermYears;
           periods = propSim.periods;
         }
 
         for (const pt of propSim.chartPoints) {
-          const ex = allChartPoints.get(pt.year) ?? { principal: 0, unpaidInterest: 0, total: 0 };
-          allChartPoints.set(pt.year, {
+          const absYear = offsetYears + pt.year;
+          const ex = allChartPoints.get(absYear) ?? { principal: 0, unpaidInterest: 0, total: 0 };
+          allChartPoints.set(absYear, {
             principal: ex.principal + pt.principal,
             unpaidInterest: ex.unpaidInterest + pt.unpaidInterest,
             total: ex.total + pt.total,
           });
         }
         for (const ab of propSim.annualBreakdown) {
-          const ex = allAnnual.get(ab.year) ?? { interest: 0, principal: 0 };
-          allAnnual.set(ab.year, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal });
+          const absYear = offsetYears + ab.year;
+          const ex = allAnnual.get(absYear) ?? { interest: 0, principal: 0 };
+          allAnnual.set(absYear, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal });
         }
       }
 
@@ -474,28 +489,12 @@ export default function MortgageCalc() {
     <div className="space-y-5">
       {/* Header */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <Building2 size={26} className="shrink-0 mt-0.5" />
-            <div>
-              <h2 className="font-bold text-lg">住宅ローンシミュレーター</h2>
-              <p className="text-blue-200 text-sm mt-0.5">5年ルール・125%ルール 未払い利息シミュレーション</p>
-            </div>
+        <div className="flex items-start gap-3">
+          <Building2 size={26} className="shrink-0 mt-0.5" />
+          <div>
+            <h2 className="font-bold text-lg">住宅ローンシミュレーター</h2>
+            <p className="text-blue-200 text-sm mt-0.5">5年ルール・125%ルール 未払い利息シミュレーション</p>
           </div>
-          <button onClick={handleSave} disabled={saveStatus === "saving"}
-            className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors shrink-0 ${
-              saveStatus === "saved" ? "border-green-400/60 text-green-300" :
-              saveStatus === "error" ? "border-red-400/60 text-red-300" :
-              saveStatus === "login-required" ? "border-yellow-400/60 text-yellow-300" :
-              "border-white/30 text-blue-200 hover:text-white hover:border-white/60"
-            }`}>
-            <Save size={11} />
-            {saveStatus === "saving" ? "保存中..." :
-             saveStatus === "saved" ? "保存済み" :
-             saveStatus === "error" ? "保存失敗" :
-             saveStatus === "login-required" ? "要ログイン" :
-             "保存"}
-          </button>
         </div>
       </div>
 

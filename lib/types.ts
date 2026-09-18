@@ -42,6 +42,7 @@ export interface StockHolding {
   ticker: string;        // 銘柄コード（例: 7203）
   name: string;          // 銘柄名（例: トヨタ自動車）
   accountType: AccountType;
+  memberId?: "self" | "spouse"; // 名義人
   purchasePrice: number; // 取得単価（円）
   shares: number;        // 保有株数
   currentPrice: number;  // 現在値（手動入力、円）
@@ -56,6 +57,7 @@ export interface FundHolding {
   name: string;                  // ファンド名
   fundCode?: string;             // ファンドコード（8桁英数字、任意）
   accountType: AccountType;
+  memberId?: "self" | "spouse"; // 名義人
   purchaseAmount: number;        // 取得金額合計（円）
   currentValue: number;          // 現在評価額（円）
   expectedAnnualReturn: number;  // 期待年利（%）
@@ -223,6 +225,7 @@ export interface MortgageSimPlan {
   principalMan: string;
   termYears: string;
   monthlyIncomeMan?: string;
+  borrowerIncomes?: Record<string, string>;
   periodSettings: { fromYear?: number; rate: string; extra: string }[];
   drawdownSchedule?: DrawdownEntry[];
   updatedAt: string;

@@ -9,16 +9,20 @@ const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "つみたてNISA", "一般口座", "iDeCo",
 ];
 
+interface MemberOption { id: "self" | "spouse"; label: string; }
+
 interface Props {
   fund?: FundHolding | null;
+  memberOptions?: MemberOption[];
   onSave: (f: Omit<FundHolding, "id" | "updatedAt">) => void;
   onClose: () => void;
 }
 
-export default function FundModal({ fund, onSave, onClose }: Props) {
+export default function FundModal({ fund, memberOptions, onSave, onClose }: Props) {
   const [fundCode, setFundCode] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("NISA（つみたて投資枠）");
+  const [memberId, setMemberId] = useState<"self" | "spouse" | undefined>(undefined);
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [currentValue, setCurrentValue] = useState("");
   const [expectedReturn, setExpectedReturn] = useState("");
@@ -35,6 +39,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
       setFundCode(fund.fundCode ?? "");
       setName(fund.name);
       setAccountType(fund.accountType);
+      setMemberId(fund.memberId);
       setPurchaseAmount(String(fund.purchaseAmount));
       setCurrentValue(String(fund.currentValue));
       setExpectedReturn(String(fund.expectedAnnualReturn));
@@ -74,6 +79,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
     onSave({
       fundCode: fundCode || undefined,
       name, accountType,
+      memberId: memberId || undefined,
       purchaseAmount: pa,
       currentValue: cv2,
       expectedAnnualReturn: parseFloat(expectedReturn) || 0,
@@ -157,6 +163,28 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
               {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+
+          {memberOptions && memberOptions.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">名義人</label>
+              <div className="flex gap-2">
+                {memberOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setMemberId(memberId === opt.id ? undefined : opt.id)}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
+                      memberId === opt.id
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

@@ -13,11 +13,12 @@ const ACCOUNT_COLORS: Record<string, string> = {
 
 interface Props {
   stock: StockHolding;
+  memberLabel?: string;
   onEdit: (s: StockHolding) => void;
   onDelete: (id: string) => void;
 }
 
-export default function StockCard({ stock, onEdit, onDelete }: Props) {
+export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Props) {
   const cost = stock.purchasePrice * stock.shares;
   const currentTotal = stock.currentPrice * stock.shares;
   const gain = currentTotal - cost;
@@ -32,11 +33,14 @@ export default function StockCard({ stock, onEdit, onDelete }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{stock.ticker}</span>
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACCOUNT_COLORS[stock.accountType]}`}>
               {stock.accountType}
             </span>
+            {memberLabel && (
+              <span className="text-xs bg-blue-50 text-blue-600 font-medium rounded-full px-2 py-0.5">{memberLabel}</span>
+            )}
           </div>
           <span className="font-semibold text-gray-900">{stock.name}</span>
           {stock.note && <span className="text-xs text-gray-400">{stock.note}</span>}
