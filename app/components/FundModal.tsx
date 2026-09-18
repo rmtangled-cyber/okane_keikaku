@@ -6,7 +6,7 @@ import { fetchFundQuote } from "@/lib/marketData";
 import { X, RefreshCw, Loader2 } from "lucide-react";
 
 const ACCOUNT_TYPES: AccountType[] = [
-  "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
+  "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "つみたてNISA", "一般口座", "iDeCo",
 ];
 
 interface Props {

@@ -9,6 +9,7 @@ export type AccountType =
   | "特定口座"
   | "NISA（成長投資枠）"
   | "NISA（つみたて投資枠）"
+  | "つみたてNISA"
   | "一般口座"
   | "iDeCo";
 
@@ -16,7 +17,7 @@ export const TAX_RATE = 0.20315;
 
 export function calcTax(gain: number, accountType: AccountType): number {
   if (gain <= 0) return 0;
-  if (accountType.startsWith("NISA") || accountType === "iDeCo") return 0;
+  if (accountType.startsWith("NISA") || accountType === "つみたてNISA" || accountType === "iDeCo") return 0;
   return Math.floor(gain * TAX_RATE);
 }
 
