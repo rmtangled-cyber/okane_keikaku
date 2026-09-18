@@ -1,10 +1,11 @@
 "use client";
 
-import { Asset, Goal, MonthlySnapshot } from "./types";
+import { Asset, Goal, MonthlySnapshot, HomePurchase } from "./types";
 
 const ASSETS_KEY = "okane_assets";
 const GOALS_KEY = "okane_goals";
 const SNAPSHOTS_KEY = "okane_snapshots";
+const HOME_KEY = "okane_home";
 
 export function getAssets(): Asset[] {
   if (typeof window === "undefined") return [];
@@ -34,6 +35,16 @@ export function getSnapshots(): MonthlySnapshot[] {
 
 export function saveSnapshots(snapshots: MonthlySnapshot[]): void {
   localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(snapshots));
+}
+
+export function getHomePurchase(): HomePurchase | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(HOME_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function saveHomePurchase(home: HomePurchase): void {
+  localStorage.setItem(HOME_KEY, JSON.stringify(home));
 }
 
 function getDefaultAssets(): Asset[] {

@@ -7,11 +7,12 @@ import {
 } from "recharts";
 import { Plus, TrendingUp, Wallet, Target, RefreshCw } from "lucide-react";
 
-import { Asset, AssetCategory, Goal } from "@/lib/types";
-import { getAssets, saveAssets, getGoals, getSnapshots, saveSnapshots } from "@/lib/storage";
+import { Asset, AssetCategory, Goal, HomePurchase } from "@/lib/types";
+import { getAssets, saveAssets, getGoals, getSnapshots, saveSnapshots, getHomePurchase } from "@/lib/storage";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
 import GoalCard from "./GoalCard";
+import HomePurchaseTab from "./HomePurchaseTab";
 
 const COLORS: Record<AssetCategory, string> = {
   "現金・預金": "#3b82f6",
@@ -22,12 +23,13 @@ const COLORS: Record<AssetCategory, string> = {
   "その他": "#6b7280",
 };
 
-type Tab = "概要" | "資産一覧" | "目標";
+type Tab = "概要" | "資産一覧" | "目標" | "マイホーム";
 
 export default function Dashboard() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [snapshots, setSnapshots] = useState<{ month: string; total: number }[]>([]);
+  const [home, setHome] = useState<HomePurchase | null>(null);
   const [tab, setTab] = useState<Tab>("概要");
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -37,6 +39,7 @@ export default function Dashboard() {
     setAssets(getAssets());
     setGoals(getGoals());
     setSnapshots(getSnapshots());
+    setHome(getHomePurchase());
   }, []);
 
   const total = assets.reduce((s, a) => s + a.amount, 0);
@@ -114,7 +117,7 @@ export default function Dashboard() {
         </div>
         {/* Tabs */}
         <div className="max-w-4xl mx-auto px-4 flex gap-6 border-t border-gray-50">
-          {(["概要", "資産一覧", "目標"] as Tab[]).map(t => (
+          {(["概要", "資産一覧", "目標", "マイホーム"] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -236,6 +239,11 @@ export default function Dashboard() {
               <GoalCard key={goal.id} goal={goal} />
             ))}
           </div>
+        )}
+
+        {/* マイホームタブ */}
+        {tab === "マイホーム" && (
+          <HomePurchaseTab home={home} onChange={setHome} />
         )}
       </main>
 
