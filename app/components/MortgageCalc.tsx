@@ -207,7 +207,7 @@ interface BorrowerSimData {
 
 export default function MortgageCalc() {
   const { user } = useAuth();
-  const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
+  const [borrowerIncomes, setBorrowerIncomes] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [properties, setProperties] = useState<MortgageProperty[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -266,7 +266,7 @@ export default function MortgageCalc() {
     });
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
-      if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
+      if (plan.monthlyIncomeMan) setBorrowerIncomes(prev => ({ ...prev, self: plan.monthlyIncomeMan! }));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -286,7 +286,7 @@ export default function MortgageCalc() {
           bankRate: "",
           principalMan: "0",
           termYears: "35",
-          monthlyIncomeMan,
+          monthlyIncomeMan: borrowerIncomes["self"] ?? "",
           periodSettings: [],
           updatedAt: new Date().toISOString(),
         }),
@@ -460,8 +460,6 @@ export default function MortgageCalc() {
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, JSON.stringify(borrowerOptions)]);
-
-  const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;
 
   const burdenColor = (ratio: number) => {
     if (ratio < 25) return "text-green-700 bg-green-50";
@@ -650,22 +648,6 @@ export default function MortgageCalc() {
         )}
       </div>
 
-      {/* Monthly income input (for repayment ratio) */}
-      {hasSims && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm font-medium text-gray-700 shrink-0">月収</label>
-            <div className="flex items-center gap-2">
-              <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
-                placeholder="40"
-                className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <span className="text-sm text-gray-500">万円 / 月</span>
-            </div>
-            <span className="text-xs text-gray-400">返済負担率の計算に使用</span>
-          </div>
-        </div>
-      )}
-
       {/* Per-borrower simulation sections */}
       {borrowerSims.map(data => {
         const isExpanded = expandedBorrowers[data.borrowerId] !== false;
@@ -689,14 +671,17 @@ export default function MortgageCalc() {
                         <span className="text-xs text-gray-500">初期月額返済</span>
                         <div className="font-bold text-xl text-gray-900">¥{Math.round(data.initialMonthly).toLocaleString()}</div>
                       </div>
-                      {monthlyIncome > 0 && data.initialMonthly > 0 && (
-                        <div>
-                          <span className="text-xs text-gray-500">返済負担率</span>
-                          <div className={`inline-flex font-bold text-sm px-2 py-0.5 rounded-lg mt-0.5 ${burdenColor((data.initialMonthly / monthlyIncome) * 100)}`}>
-                            {((data.initialMonthly / monthlyIncome) * 100).toFixed(1)}%
+                      {(() => {
+                        const inc = (parseFloat(borrowerIncomes[data.borrowerId] || "") || 0) * 10000;
+                        return inc > 0 && data.initialMonthly > 0 ? (
+                          <div>
+                            <span className="text-xs text-gray-500">返済負担率</span>
+                            <div className={`inline-flex font-bold text-sm px-2 py-0.5 rounded-lg mt-0.5 ${burdenColor((data.initialMonthly / inc) * 100)}`}>
+                              {((data.initialMonthly / inc) * 100).toFixed(1)}%
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   {isExpanded ? <ChevronUp size={16} className="text-indigo-400 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-indigo-400 shrink-0 mt-1" />}
@@ -715,6 +700,17 @@ export default function MortgageCalc() {
                   })}
                 </div>
               </button>
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-indigo-100/50" onClick={e => e.stopPropagation()}>
+                <label className="text-xs text-gray-500 shrink-0">月収</label>
+                <input
+                  type="number"
+                  value={borrowerIncomes[data.borrowerId] ?? ""}
+                  onChange={e => setBorrowerIncomes(prev => ({ ...prev, [data.borrowerId]: e.target.value }))}
+                  placeholder="40"
+                  className="w-24 border border-indigo-100 rounded-lg px-2 py-1.5 text-xs text-gray-900 bg-white/70 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <span className="text-xs text-gray-500">万円 / 月</span>
+              </div>
             </div>
 
             {isExpanded && (
