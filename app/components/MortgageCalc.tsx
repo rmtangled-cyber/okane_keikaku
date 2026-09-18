@@ -304,7 +304,7 @@ export default function MortgageCalc() {
       await Promise.race([
         saveMortgageSimPlan({
           bankName, bankRate,
-          principalMan: String(drawdowns.reduce((s, d) => s + d.amountMan, 0)),
+          principalMan: String(drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0)),
           termYears,
           monthlyIncomeMan,
           periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
@@ -321,6 +321,18 @@ export default function MortgageCalc() {
     }
   };
 
+  const resolveDrawdownAmount = (d: DrawdownEntry): number => {
+    const price = parseFloat(property.priceTotalMan) || 0;
+    const dep = parseFloat(property.depositMan) || 0;
+    const mid = parseFloat(property.midPaymentMan) || 0;
+    const misc = parseFloat(property.miscCostMan) || 0;
+    const balance = Math.max(0, price - dep - mid);
+    const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
+    const links = property.paymentLinks ?? {};
+    const auto = Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
+    return auto > 0 ? auto : d.amountMan;
+  };
+
   const handlePropSave = async () => {
     if (!user) { setPropSaveStatus("error"); setTimeout(() => setPropSaveStatus("idle"), 2000); return; }
     setPropSaveStatus("saving");
@@ -334,7 +346,7 @@ export default function MortgageCalc() {
     }
   };
 
-  const principal = drawdowns.reduce((s, d) => s + d.amountMan, 0) * 10000;
+  const principal = drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0) * 10000;
   const termYearsNum = parseInt(termYears) || 35;
   const termMonths = termYearsNum * 12;
   const rate = parseFloat(bankRate) || 0;
@@ -543,48 +555,61 @@ export default function MortgageCalc() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
           </div>
-          {/* 支払いサマリー */}
-          {(property.priceTotalMan || property.depositMan || property.midPaymentMan || property.miscCostMan) && (
-            <div className="bg-gray-50 rounded-xl p-3 text-xs space-y-1.5">
-              {property.depositMan && parseFloat(property.depositMan) > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>手付金{property.contractDate ? `（${property.contractDate}）` : ""}</span>
-                  <span className="font-medium">¥{parseFloat(property.depositMan).toLocaleString()}万</span>
-                </div>
-              )}
-              {property.midPaymentMan && parseFloat(property.midPaymentMan) > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>中間金</span>
-                  <span className="font-medium">¥{parseFloat(property.midPaymentMan).toLocaleString()}万</span>
-                </div>
-              )}
-              {(() => {
-                const price = parseFloat(property.priceTotalMan) || 0;
-                const dep = parseFloat(property.depositMan) || 0;
-                const mid = parseFloat(property.midPaymentMan) || 0;
-                const loan = drawdowns.reduce((s, d) => s + d.amountMan, 0);
-                const balance = price - dep - mid - loan;
-                return balance > 0 ? (
-                  <div className="flex justify-between text-gray-600">
-                    <span>残金決済{property.finalSettlementDate ? `（${property.finalSettlementDate}）` : ""}</span>
-                    <span className="font-medium">¥{balance.toLocaleString()}万</span>
+          {/* 支払いスケジュール（融資実行日リンク） */}
+          {(parseFloat(property.depositMan) > 0 || parseFloat(property.midPaymentMan) > 0 || parseFloat(property.priceTotalMan) > 0 || parseFloat(property.miscCostMan) > 0) && (() => {
+            const price = parseFloat(property.priceTotalMan) || 0;
+            const dep = parseFloat(property.depositMan) || 0;
+            const mid = parseFloat(property.midPaymentMan) || 0;
+            const misc = parseFloat(property.miscCostMan) || 0;
+            const balance = Math.max(0, price - dep - mid);
+            const allPayments: { key: "deposit" | "midPayment" | "finalSettlement" | "miscCost"; label: string; amount: number; date?: string }[] = [
+              { key: "deposit" as const, label: "手付金", amount: dep, date: property.contractDate },
+              { key: "midPayment" as const, label: "中間金", amount: mid },
+              { key: "finalSettlement" as const, label: "残金決済", amount: balance, date: property.finalSettlementDate },
+              { key: "miscCost" as const, label: "諸費用", amount: misc },
+            ];
+            const payments = allPayments.filter(p => p.amount > 0);
+            if (payments.length === 0) return null;
+            const ddOptions = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
+            const links = property.paymentLinks ?? {};
+            return (
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">支払いスケジュール</div>
+                <div className="divide-y divide-gray-50">
+                  {payments.map(p => (
+                    <div key={p.key} className="flex items-center gap-2 px-3 py-2">
+                      <div className="w-20 shrink-0">
+                        <div className="text-xs font-medium text-gray-700">{p.label}</div>
+                        {p.date && <div className="text-xs text-gray-400 mt-0.5">{p.date}</div>}
+                      </div>
+                      <div className="text-xs font-semibold text-gray-800 w-20 text-right shrink-0">
+                        ¥{p.amount.toLocaleString()}万
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <select
+                          value={links[p.key] ?? ""}
+                          onChange={e => setProperty(prev => ({
+                            ...prev,
+                            paymentLinks: { ...(prev.paymentLinks ?? {}), [p.key]: e.target.value || undefined },
+                          }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        >
+                          <option value="">— 融資実行日に紐づけない —</option>
+                          {ddOptions.map(d => (
+                            <option key={d.id} value={d.id}>{d.date}{d.label ? `（${d.label}）` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-800">
+                    <span>合計（諸費用込み）</span>
+                    <span>¥{(price + misc).toLocaleString()}万</span>
                   </div>
-                ) : null;
-              })()}
-              {property.miscCostMan && parseFloat(property.miscCostMan) > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>諸費用</span>
-                  <span className="font-medium">¥{parseFloat(property.miscCostMan).toLocaleString()}万</span>
                 </div>
-              )}
-              {property.priceTotalMan && parseFloat(property.priceTotalMan) > 0 && (
-                <div className="flex justify-between text-gray-800 font-semibold border-t border-gray-200 pt-1.5 mt-1">
-                  <span>合計支払い（諸費用込み）</span>
-                  <span>¥{((parseFloat(property.priceTotalMan) || 0) + (parseFloat(property.miscCostMan) || 0)).toLocaleString()}万</span>
-                </div>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
             <textarea value={property.note ?? ""} rows={2} placeholder="備考など"
@@ -663,17 +688,38 @@ export default function MortgageCalc() {
                       />
                     </td>
                     <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          value={d.amountMan || ""}
-                          min={0}
-                          step={100}
-                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
-                          className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        />
-                        <span className="text-gray-500">万</span>
-                      </div>
+                      {(() => {
+                        const price = parseFloat(property.priceTotalMan) || 0;
+                        const dep = parseFloat(property.depositMan) || 0;
+                        const mid = parseFloat(property.midPaymentMan) || 0;
+                        const misc = parseFloat(property.miscCostMan) || 0;
+                        const balance = Math.max(0, price - dep - mid);
+                        const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
+                        const links = property.paymentLinks ?? {};
+                        const autoAmount = Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
+                        if (autoAmount > 0) {
+                          return (
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="w-24 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-sm text-center font-medium text-indigo-700">{autoAmount.toLocaleString()}</span>
+                              <span className="text-gray-500">万</span>
+                              <span className="text-xs text-indigo-400">自動</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              value={d.amountMan || ""}
+                              min={0}
+                              step={100}
+                              onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
+                              className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            />
+                            <span className="text-gray-500">万</span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-2.5">
                       <input
@@ -701,7 +747,7 @@ export default function MortgageCalc() {
 
         {drawdowns.length > 0 && (
           <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
-            合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
+            合計: {drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0).toLocaleString()}万円
             {(() => {
               const sorted = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
               const last = sorted[sorted.length - 1];

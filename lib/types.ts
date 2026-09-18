@@ -192,6 +192,13 @@ export interface MortgageProperty {
   midPaymentMan: string;     // 中間金（万円）
   finalSettlementDate?: string; // 残金決済日 "YYYY-MM-DD"
   miscCostMan: string;       // 諸費用（万円）
+  // 各支払いを融資実行スケジュールのどのエントリに紐づけるか（drawdown entry id）
+  paymentLinks?: {
+    deposit?: string;
+    midPayment?: string;
+    finalSettlement?: string;
+    miscCost?: string;
+  };
   note?: string;
   updatedAt: string;
 }
