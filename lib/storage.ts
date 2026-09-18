@@ -200,7 +200,7 @@ export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   } catch { return null; }
 }
 
-// Mortgage Property Info (single doc per user)
+// Mortgage Property Info (single doc per user — kept for migration reads)
 export async function saveMortgageProperty(prop: MortgageProperty): Promise<void> {
   const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageProperty", "default");
   await setDoc(ref, stripUndefined(prop));
@@ -211,6 +211,14 @@ export async function loadMortgageProperty(): Promise<MortgageProperty | null> {
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageProperty) : null;
   } catch { return null; }
+}
+
+// Mortgage Properties (collection — supports multiple properties)
+export function saveMortgageProperties(items: MortgageProperty[]): void {
+  fsSaveAll("mortgageProperties", items).catch(console.error);
+}
+export async function loadMortgageProperties(): Promise<MortgageProperty[]> {
+  try { return await fsGetAll<MortgageProperty>("mortgageProperties"); } catch { return []; }
 }
 
 // User Profile (single doc per user)

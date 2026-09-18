@@ -6,10 +6,11 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, FileText } from "lucide-react";
-import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperty, saveMortgageProperty } from "../../lib/storage";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, Pencil, Trash2 } from "lucide-react";
+import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
 import type { DrawdownEntry, MortgageProperty } from "../../lib/types";
+import MortgagePropertyModal from "./MortgagePropertyModal";
 
 // ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
 
@@ -227,6 +228,48 @@ const SCENARIOS: Scenario[] = [
 const fmt = (v: number) =>
   v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000)}万`;
 
+// ── 年次返済内訳カスタムTooltip ───────────────────────────────────────────────
+function AnnualBreakdownTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: { name: string; value: number }[];
+  label?: string | number;
+}) {
+  if (!active || !payload?.length) return null;
+  const interest = payload.find(p => p.name === "利息")?.value ?? 0;
+  const principal = payload.find(p => p.name === "元金返済")?.value ?? 0;
+  const annual = interest + principal;
+  const monthly = Math.round(annual / 12);
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+      <div className="font-semibold text-gray-700 mb-2">{label}年目</div>
+      <div className="space-y-1">
+        <div className="flex justify-between gap-4">
+          <span className="text-gray-500">年間合計</span>
+          <span className="font-bold text-gray-900">{fmt(annual)}</span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-gray-500">月次換算</span>
+          <span className="font-medium text-gray-700">{fmt(monthly)}</span>
+        </div>
+        <div className="flex justify-between gap-4 text-gray-400">
+          <span>ボーナス払い</span>
+          <span>—</span>
+        </div>
+        <div className="border-t border-gray-100 pt-1 mt-1 space-y-0.5">
+          <div className="flex justify-between gap-4">
+            <span className="text-red-500">利息</span>
+            <span className="text-red-600">{fmt(interest)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-blue-500">元金返済</span>
+            <span className="text-blue-600">{fmt(principal)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MortgageCalc() {
   const { user } = useAuth();
   const [termYears, setTermYears] = useState("35");
@@ -241,24 +284,27 @@ export default function MortgageCalc() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
   const [drawdowns, setDrawdowns] = useState<DrawdownEntry[]>([]);
-  const [property, setProperty] = useState<MortgageProperty>({
-    propertyName: "",
-    contractDate: "",
-    priceTotalMan: "",
-    depositMan: "",
-    midPaymentMan: "",
-    finalSettlementDate: "",
-    miscCostMan: "",
-    note: "",
-    updatedAt: "",
-  });
-  const [propSaveStatus, setPropSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [properties, setProperties] = useState<MortgageProperty[]>([]);
+  const [showPropertyModal, setShowPropertyModal] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
+  const [show5Year, setShow5Year] = useState(false);
 
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
     if (!user) return;
-    loadMortgageProperty().then(prop => {
-      if (prop) setProperty(prop);
+    // Load properties (collection), then try migration from legacy single doc
+    loadMortgageProperties().then(async items => {
+      if (items.length > 0) {
+        setProperties(items);
+      } else {
+        // Migration: old single-doc → new collection
+        const old = await loadMortgageProperty();
+        if (old) {
+          const migrated: MortgageProperty = { ...old, id: old.id ?? `prop_${Date.now()}` };
+          setProperties([migrated]);
+          saveMortgageProperties([migrated]);
+        }
+      }
     });
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
@@ -329,28 +375,52 @@ export default function MortgageCalc() {
   };
 
   const resolveDrawdownAmount = (d: DrawdownEntry): number => {
-    const price = parseFloat(property.priceTotalMan) || 0;
-    const dep = parseFloat(property.depositMan) || 0;
-    const mid = parseFloat(property.midPaymentMan) || 0;
-    const misc = parseFloat(property.miscCostMan) || 0;
-    const balance = Math.max(0, price - dep - mid);
-    const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
-    const links = property.paymentLinks ?? {};
-    const auto = Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
+    let auto = 0;
+    for (const prop of properties) {
+      const price = parseFloat(prop.priceTotalMan) || 0;
+      const dep = parseFloat(prop.depositMan) || 0;
+      const mid = parseFloat(prop.midPaymentMan) || 0;
+      const misc = parseFloat(prop.miscCostMan) || 0;
+      const balance = Math.max(0, price - dep - mid);
+      const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
+      const links = prop.paymentLinks ?? {};
+      auto += Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
+    }
     return auto > 0 ? auto : d.amountMan;
   };
 
-  const handlePropSave = async () => {
-    if (!user) { setPropSaveStatus("error"); setTimeout(() => setPropSaveStatus("idle"), 2000); return; }
-    setPropSaveStatus("saving");
-    try {
-      await saveMortgageProperty({ ...property, updatedAt: new Date().toISOString() });
-      setPropSaveStatus("saved");
-      setTimeout(() => setPropSaveStatus("idle"), 2000);
-    } catch {
-      setPropSaveStatus("error");
-      setTimeout(() => setPropSaveStatus("idle"), 3000);
+  const getDrawdownAutoLabel = (drawdownId: string): string => {
+    const keyLabels: Record<string, string> = { deposit: "手付金", midPayment: "中間金", finalSettlement: "残金決済", miscCost: "諸費用" };
+    const found: string[] = [];
+    for (const prop of properties) {
+      const links = prop.paymentLinks ?? {};
+      for (const [key, id] of Object.entries(links)) {
+        if (id === drawdownId) {
+          const propName = prop.propertyName ? `${prop.propertyName}: ` : "";
+          found.push(`${propName}${keyLabels[key] ?? key}`);
+        }
+      }
     }
+    return found.join("・");
+  };
+
+  const handlePropertySave = (prop: MortgageProperty) => {
+    setProperties(prev => {
+      const idx = prev.findIndex(p => p.id === prop.id);
+      const next = idx >= 0 ? prev.map((p, i) => i === idx ? prop : p) : [...prev, prop];
+      saveMortgageProperties(next);
+      return next;
+    });
+    setShowPropertyModal(false);
+    setEditingProperty(null);
+  };
+
+  const handlePropertyDelete = (id: string) => {
+    setProperties(prev => {
+      const next = prev.filter(p => p.id !== id);
+      saveMortgageProperties(next);
+      return next;
+    });
   };
 
   const principal = drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0) * 10000;
@@ -497,134 +567,74 @@ export default function MortgageCalc() {
         )}
       </div>
 
-      {/* Property / contract info */}
+      {/* Property / contract info — list view */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileText size={15} className="text-blue-500 shrink-0" />
+            <Building2 size={15} className="text-blue-500 shrink-0" />
             <h3 className="text-sm font-semibold text-gray-800">物件・契約情報</h3>
           </div>
           <button
-            onClick={handlePropSave}
-            disabled={propSaveStatus === "saving"}
-            className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
-              propSaveStatus === "saved" ? "border-green-300 text-green-600 bg-green-50" :
-              propSaveStatus === "error" ? "border-red-300 text-red-600" :
-              "border-gray-200 text-gray-600 hover:bg-gray-50"
-            }`}
+            onClick={() => { setEditingProperty(null); setShowPropertyModal(true); }}
+            className="flex items-center gap-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
           >
-            <Save size={11} />
-            {propSaveStatus === "saving" ? "保存中..." : propSaveStatus === "saved" ? "保存済み" : propSaveStatus === "error" ? "失敗" : "保存"}
+            <Plus size={11} />
+            追加
           </button>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">物件名</label>
-              <input type="text" value={property.propertyName} placeholder="例: ○○マンション 302号室"
-                onChange={e => setProperty(p => ({ ...p, propertyName: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">契約日</label>
-              <input type="date" value={property.contractDate ?? ""}
-                onChange={e => setProperty(p => ({ ...p, contractDate: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">物件価格（万円）</label>
-              <input type="number" value={property.priceTotalMan} placeholder="4500" min={0}
-                onChange={e => setProperty(p => ({ ...p, priceTotalMan: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">手付金（万円）</label>
-              <input type="number" value={property.depositMan} placeholder="450" min={0}
-                onChange={e => setProperty(p => ({ ...p, depositMan: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">中間金（万円）</label>
-              <input type="number" value={property.midPaymentMan} placeholder="0" min={0}
-                onChange={e => setProperty(p => ({ ...p, midPaymentMan: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">残金決済日</label>
-              <input type="date" value={property.finalSettlementDate ?? ""}
-                onChange={e => setProperty(p => ({ ...p, finalSettlementDate: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">諸費用（万円）</label>
-              <input type="number" value={property.miscCostMan} placeholder="150" min={0}
-                onChange={e => setProperty(p => ({ ...p, miscCostMan: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
+
+        {properties.length === 0 ? (
+          <div className="px-5 py-8 text-center text-gray-400">
+            <Building2 size={28} className="mx-auto mb-2 text-gray-200" />
+            <p className="text-xs">「追加」ボタンで物件情報を登録できます</p>
           </div>
-          {/* 支払いスケジュール（融資実行日リンク） */}
-          {(parseFloat(property.depositMan) > 0 || parseFloat(property.midPaymentMan) > 0 || parseFloat(property.priceTotalMan) > 0 || parseFloat(property.miscCostMan) > 0) && (() => {
-            const price = parseFloat(property.priceTotalMan) || 0;
-            const dep = parseFloat(property.depositMan) || 0;
-            const mid = parseFloat(property.midPaymentMan) || 0;
-            const misc = parseFloat(property.miscCostMan) || 0;
-            const balance = Math.max(0, price - dep - mid);
-            const allPayments: { key: "deposit" | "midPayment" | "finalSettlement" | "miscCost"; label: string; amount: number; date?: string }[] = [
-              { key: "deposit" as const, label: "手付金", amount: dep, date: property.contractDate },
-              { key: "midPayment" as const, label: "中間金", amount: mid },
-              { key: "finalSettlement" as const, label: "残金決済", amount: balance, date: property.finalSettlementDate },
-              { key: "miscCost" as const, label: "諸費用", amount: misc },
-            ];
-            const payments = allPayments.filter(p => p.amount > 0);
-            if (payments.length === 0) return null;
-            const ddOptions = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
-            const links = property.paymentLinks ?? {};
-            return (
-              <div className="rounded-xl border border-gray-100 overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">支払いスケジュール</div>
-                <div className="divide-y divide-gray-50">
-                  {payments.map(p => (
-                    <div key={p.key} className="flex items-center gap-2 px-3 py-2">
-                      <div className="w-20 shrink-0">
-                        <div className="text-xs font-medium text-gray-700">{p.label}</div>
-                        {p.date && <div className="text-xs text-gray-400 mt-0.5">{p.date}</div>}
-                      </div>
-                      <div className="text-xs font-semibold text-gray-800 w-20 text-right shrink-0">
-                        ¥{p.amount.toLocaleString()}万
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <select
-                          value={links[p.key] ?? ""}
-                          onChange={e => setProperty(prev => ({
-                            ...prev,
-                            paymentLinks: { ...(prev.paymentLinks ?? {}), [p.key]: e.target.value || undefined },
-                          }))}
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        >
-                          <option value="">— 融資実行日に紐づけない —</option>
-                          {ddOptions.map(d => (
-                            <option key={d.id} value={d.id}>{d.date}{d.label ? `（${d.label}）` : ""}</option>
-                          ))}
-                        </select>
-                      </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {properties.map(prop => {
+              const price = parseFloat(prop.priceTotalMan) || 0;
+              const misc = parseFloat(prop.miscCostMan) || 0;
+              return (
+                <div key={prop.id} className="px-5 py-4 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-800 truncate">{prop.propertyName || "（物件名なし）"}</div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
+                      {price > 0 && <span>物件価格 {price.toLocaleString()}万円</span>}
+                      {misc > 0 && <span>諸費用 {misc.toLocaleString()}万円</span>}
+                      {prop.contractDate && <span>契約日 {prop.contractDate}</span>}
+                      {prop.finalSettlementDate && <span>残金決済 {prop.finalSettlementDate}</span>}
                     </div>
-                  ))}
-                  <div className="flex justify-between px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-800">
-                    <span>合計（諸費用込み）</span>
-                    <span>¥{(price + misc).toLocaleString()}万</span>
+                    {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { setEditingProperty(prop); setShowPropertyModal(true); }}
+                      className="p-1.5 text-gray-300 hover:text-blue-500 rounded transition-colors"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => handlePropertyDelete(prop.id)}
+                      className="p-1.5 text-gray-300 hover:text-red-500 rounded transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })()}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
-            <textarea value={property.note ?? ""} rows={2} placeholder="備考など"
-              onChange={e => setProperty(p => ({ ...p, note: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+              );
+            })}
           </div>
-        </div>
+        )}
       </div>
+
+      {/* Modal */}
+      {showPropertyModal && (
+        <MortgagePropertyModal
+          property={editingProperty}
+          drawdowns={drawdowns}
+          onSave={handlePropertySave}
+          onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
+        />
+      )}
 
       {/* Loan conditions */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -645,22 +655,10 @@ export default function MortgageCalc() {
               </div>
             )}
           </div>
-          <div className="col-span-2 pt-1 border-t border-gray-50">
-            <label className="block text-xs font-medium text-gray-600 mb-1">月収（万円）<span className="ml-1 text-gray-400 font-normal">返済負担率の計算に使用</span></label>
-            <div className="flex items-center gap-2">
-              <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
-                placeholder="40"
-                className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <span className="text-sm text-gray-500">万円 / 月</span>
-              {monthlyIncomeMan && parseFloat(monthlyIncomeMan) > 0 && (
-                <span className="text-xs text-gray-400">（年収 {Math.round(parseFloat(monthlyIncomeMan) * 12)}万円）</span>
-              )}
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Drawdown schedule — moved before BOJ scenarios */}
+      {/* Drawdown schedule */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <div className="flex items-center gap-2">
@@ -684,69 +682,45 @@ export default function MortgageCalc() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {drawdowns.map(d => (
-                  <tr key={d.id}>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="date"
-                        value={d.date}
-                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, date: e.target.value } : x))}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {(() => {
-                        const price = parseFloat(property.priceTotalMan) || 0;
-                        const dep = parseFloat(property.depositMan) || 0;
-                        const mid = parseFloat(property.midPaymentMan) || 0;
-                        const misc = parseFloat(property.miscCostMan) || 0;
-                        const balance = Math.max(0, price - dep - mid);
-                        const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
-                        const links = property.paymentLinks ?? {};
-                        const autoAmount = Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
-                        if (autoAmount > 0) {
-                          return (
-                            <div className="flex items-center justify-center gap-1">
-                              <span className="w-24 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-sm text-center font-medium text-indigo-700">{autoAmount.toLocaleString()}</span>
-                              <span className="text-gray-500">万</span>
-                              <span className="text-xs text-indigo-400">自動</span>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="number"
-                              value={d.amountMan || ""}
-                              min={0}
-                              step={100}
-                              onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, amountMan: parseFloat(e.target.value) || 0 } : x))}
-                              className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            />
-                            <span className="text-gray-500">万</span>
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="text"
-                        value={d.label ?? ""}
-                        placeholder="例: 契約金30%"
-                        onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, label: e.target.value } : x))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <button
-                        onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
-                        className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {drawdowns.map(d => {
+                  const resolvedAmount = resolveDrawdownAmount(d);
+                  const autoLabel = getDrawdownAutoLabel(d.id);
+                  const displayLabel = autoLabel || d.label || "";
+                  return (
+                    <tr key={d.id}>
+                      <td className="px-4 py-2.5">
+                        <input
+                          type="date"
+                          value={d.date}
+                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, date: e.target.value } : x))}
+                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className={`w-24 rounded-lg px-2 py-1.5 text-sm text-center font-medium ${
+                            autoLabel ? "bg-indigo-50 border border-indigo-200 text-indigo-700" : "bg-gray-50 border border-gray-200 text-gray-700"
+                          }`}>
+                            {resolvedAmount > 0 ? resolvedAmount.toLocaleString() : "—"}
+                          </span>
+                          <span className="text-gray-500">万</span>
+                          {autoLabel && <span className="text-xs text-indigo-400">自動</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-sm text-gray-600">{displayLabel || <span className="text-gray-300">—</span>}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
+                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -879,8 +853,8 @@ export default function MortgageCalc() {
       {principal > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-gray-800">金利変更・繰り上げ返済プラン</h3>
-            <p className="text-xs text-gray-400 mt-0.5">金利が変わる年や繰り上げ返済の年を自由に追加できます</p>
+            <h3 className="text-sm font-semibold text-gray-800">金利変更プラン</h3>
+            <p className="text-xs text-gray-400 mt-0.5">金利が変わる年を自由に追加できます</p>
           </div>
 
           <div className="overflow-x-auto">
@@ -889,7 +863,6 @@ export default function MortgageCalc() {
                 <tr>
                   <th className="px-4 py-2.5 text-left text-gray-500 font-medium whitespace-nowrap">開始年</th>
                   <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">適用金利</th>
-                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">繰り上げ返済<br /><span className="font-normal text-gray-400">（年初に一括・万円）</span></th>
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -905,7 +878,6 @@ export default function MortgageCalc() {
                       <span className="text-gray-500">%</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-center text-gray-300">—</td>
                   <td className="px-4 py-3"></td>
                 </tr>
 
@@ -941,20 +913,6 @@ export default function MortgageCalc() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="number"
-                            value={rc.extra}
-                            step="10"
-                            min="0"
-                            placeholder="0"
-                            onChange={e => updateRateChange(rc.id, "extra", e.target.value)}
-                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                          <span className="text-gray-500">万</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
                         <button
                           onClick={() => removeRateChange(rc.id)}
                           className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
@@ -975,7 +933,7 @@ export default function MortgageCalc() {
               className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
             >
               <Plus size={13} />
-              金利変更・繰り上げ返済を追加
+              金利変更を追加
             </button>
           </div>
         </div>
@@ -984,53 +942,61 @@ export default function MortgageCalc() {
       {/* Simulation results */}
       {principal > 0 && sim && (
         <>
-          {/* Period payment table */}
+          {/* Period payment table — collapsible */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-800">5年ルール試算結果</h3>
-                <p className="text-xs text-gray-400 mt-0.5">125%上限を適用した月額返済の推移</p>
+            <button
+              className="w-full flex items-center justify-between px-5 py-4 text-left"
+              onClick={() => setShow5Year(v => !v)}
+            >
+              <div className="flex items-center gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">5年ルール試算結果</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">125%上限を適用した月額返済の推移</p>
+                </div>
+                {hasCap && (
+                  <span className="text-xs bg-red-100 text-red-700 font-medium rounded-full px-2.5 py-1">125%上限あり</span>
+                )}
               </div>
-              {hasCap && (
-                <span className="text-xs bg-red-100 text-red-700 font-medium rounded-full px-2.5 py-1">125%上限あり</span>
-              )}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-gray-500 font-medium">期間</th>
-                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">期首金利</th>
-                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">月額返済</th>
-                    {monthlyIncome > 0 && <th className="px-4 py-2.5 text-right text-gray-500 font-medium">返済負担率</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {sim.periods.map((p, i) => {
-                    const burdenRatio = monthlyIncome > 0 ? (p.payment / monthlyIncome) * 100 : null;
-                    return (
-                      <tr key={i} className={p.capped ? "bg-red-50" : ""}>
-                        <td className="px-4 py-2.5 text-gray-700">{p.label}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-600">{p.rateAtStart.toFixed(3)}%</td>
-                        <td className="px-4 py-2.5 text-right font-bold">
-                          <span className={p.capped ? "text-red-700" : "text-gray-800"}>
-                            ¥{p.payment.toLocaleString()}
-                            {p.capped && <span className="block text-red-400 font-normal text-xs">（125%上限）</span>}
-                          </span>
-                        </td>
-                        {monthlyIncome > 0 && burdenRatio !== null && (
-                          <td className="px-4 py-2.5 text-right">
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${burdenColor(burdenRatio)}`}>
-                              {burdenRatio.toFixed(1)}%
+              {show5Year ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+            </button>
+            {show5Year && (
+              <div className="overflow-x-auto border-t border-gray-50">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left text-gray-500 font-medium">期間</th>
+                      <th className="px-4 py-2.5 text-right text-gray-500 font-medium">期首金利</th>
+                      <th className="px-4 py-2.5 text-right text-gray-500 font-medium">月額返済</th>
+                      {monthlyIncome > 0 && <th className="px-4 py-2.5 text-right text-gray-500 font-medium">返済負担率</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {sim.periods.map((p, i) => {
+                      const burdenRatio = monthlyIncome > 0 ? (p.payment / monthlyIncome) * 100 : null;
+                      return (
+                        <tr key={i} className={p.capped ? "bg-red-50" : ""}>
+                          <td className="px-4 py-2.5 text-gray-700">{p.label}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{p.rateAtStart.toFixed(3)}%</td>
+                          <td className="px-4 py-2.5 text-right font-bold">
+                            <span className={p.capped ? "text-red-700" : "text-gray-800"}>
+                              ¥{p.payment.toLocaleString()}
+                              {p.capped && <span className="block text-red-400 font-normal text-xs">（125%上限）</span>}
                             </span>
                           </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          {monthlyIncome > 0 && burdenRatio !== null && (
+                            <td className="px-4 py-2.5 text-right">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${burdenColor(burdenRatio)}`}>
+                                {burdenRatio.toFixed(1)}%
+                              </span>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Balance chart */}
@@ -1069,10 +1035,7 @@ export default function MortgageCalc() {
                 <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
                   ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-                <Tooltip
-                  labelFormatter={l => `${l}年目`}
-                  formatter={(v, name) => [fmt(Number(v)), name]}
-                />
+                <Tooltip content={<AnnualBreakdownTooltip />} />
                 <Legend />
                 <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
                 <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
@@ -1122,44 +1085,60 @@ export default function MortgageCalc() {
             </div>
           )}
 
-          {/* 返済負担率サマリー */}
-          {monthlyIncome > 0 && sim.periods.length > 0 && (() => {
-            const maxRatio = Math.max(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
-            const minRatio = Math.min(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
-            const annualIncome = monthlyIncome * 12;
-            const annualRepayment = sim.periods[0].payment * 12;
-            const annualBurden = (annualRepayment / annualIncome) * 100;
-            return (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-3">返済負担率</h4>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <div className="text-xs text-gray-500">初期月額負担率</div>
-                    <div className={`font-bold text-lg mt-0.5 ${minRatio < 25 ? "text-green-700" : minRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                      {minRatio.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <div className="text-xs text-gray-500">最大月額負担率</div>
-                    <div className={`font-bold text-lg mt-0.5 ${maxRatio < 25 ? "text-green-700" : maxRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                      {maxRatio.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <div className="text-xs text-gray-500">年間返済負担率</div>
-                    <div className={`font-bold text-lg mt-0.5 ${annualBurden < 25 ? "text-green-700" : annualBurden < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                      {annualBurden.toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400 space-y-0.5">
-                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mr-1"></span>25%未満：余裕あり</p>
-                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 mr-1"></span>25〜35%：要注意（金融機関の一般的な審査基準上限）</p>
-                  <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mr-1"></span>35%超：負担大（家計への影響に注意）</p>
-                </div>
+          {/* 返済負担率 — always show when sim exists; 月収 input lives here */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-3">返済負担率</h4>
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                月収（万円）<span className="ml-1 text-gray-400 font-normal">返済負担率の計算に使用</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
+                  placeholder="40"
+                  className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <span className="text-sm text-gray-500">万円 / 月</span>
+                {monthlyIncomeMan && parseFloat(monthlyIncomeMan) > 0 && (
+                  <span className="text-xs text-gray-400">（年収 {Math.round(parseFloat(monthlyIncomeMan) * 12)}万円）</span>
+                )}
               </div>
-            );
-          })()}
+            </div>
+            {monthlyIncome > 0 && sim.periods.length > 0 && (() => {
+              const maxRatio = Math.max(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
+              const minRatio = Math.min(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
+              const annualIncome = monthlyIncome * 12;
+              const annualRepayment = sim.periods[0].payment * 12;
+              const annualBurden = (annualRepayment / annualIncome) * 100;
+              return (
+                <>
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <div className="text-xs text-gray-500">初期月額負担率</div>
+                      <div className={`font-bold text-lg mt-0.5 ${minRatio < 25 ? "text-green-700" : minRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                        {minRatio.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <div className="text-xs text-gray-500">最大月額負担率</div>
+                      <div className={`font-bold text-lg mt-0.5 ${maxRatio < 25 ? "text-green-700" : maxRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                        {maxRatio.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <div className="text-xs text-gray-500">年間返済負担率</div>
+                      <div className={`font-bold text-lg mt-0.5 ${annualBurden < 25 ? "text-green-700" : annualBurden < 35 ? "text-yellow-700" : "text-red-700"}`}>
+                        {annualBurden.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 space-y-0.5">
+                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mr-1"></span>25%未満：余裕あり</p>
+                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 mr-1"></span>25〜35%：要注意（金融機関の一般的な審査基準上限）</p>
+                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mr-1"></span>35%超：負担大（家計への影響に注意）</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
 
           {/* Quick scenario comparison */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

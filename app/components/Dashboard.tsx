@@ -18,6 +18,7 @@ import {
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
   MortgageSimPlan, UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
 } from "@/lib/types";
+import { applyMonthlyContributions } from "@/lib/autoContrib";
 import {
   getAssets, saveAssets, loadAssets,
   getGoals, saveGoals, loadGoals,
@@ -393,7 +394,11 @@ export default function Dashboard() {
     if (authLoading || !user) return;
     loadAssets().then(setAssets);
     loadStocks().then(setStocks);
-    loadFunds().then(setFunds);
+    loadFunds().then(loaded => {
+      const { funds: withContrib, changed } = applyMonthlyContributions(loaded);
+      setFunds(withContrib);
+      if (changed) saveFunds(withContrib);
+    });
     loadGoals().then(setGoals);
     loadSnapshots().then(setSnapshots);
     loadExpenses().then(setExpenses);
@@ -552,7 +557,7 @@ export default function Dashboard() {
   const handleSaveFund = useCallback((data: Omit<FundHolding, "id" | "updatedAt">) => {
     setFunds(prev => {
       const next = editingFund
-        ? prev.map(f => f.id === editingFund.id ? { ...f, ...data, updatedAt: new Date().toISOString() } : f)
+        ? prev.map(f => f.id === editingFund.id ? { ...f, ...data, lastAutoContribYearMonth: f.lastAutoContribYearMonth, updatedAt: new Date().toISOString() } : f)
         : [...prev, { id: Date.now().toString(), ...data, updatedAt: new Date().toISOString() }];
       saveFunds(next); return next;
     });

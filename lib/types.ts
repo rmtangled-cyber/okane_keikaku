@@ -9,6 +9,7 @@ export type AccountType =
   | "特定口座"
   | "NISA（成長投資枠）"
   | "NISA（つみたて投資枠）"
+  | "つみたてNISA"
   | "一般口座"
   | "iDeCo";
 
@@ -16,7 +17,7 @@ export const TAX_RATE = 0.20315;
 
 export function calcTax(gain: number, accountType: AccountType): number {
   if (gain <= 0) return 0;
-  if (accountType.startsWith("NISA") || accountType === "iDeCo") return 0;
+  if (accountType.startsWith("NISA") || accountType === "つみたてNISA" || accountType === "iDeCo") return 0;
   return Math.floor(gain * TAX_RATE);
 }
 
@@ -59,6 +60,8 @@ export interface FundHolding {
   currentValue: number;          // 現在評価額（円）
   expectedAnnualReturn: number;  // 期待年利（%）
   monthlyContribution: number;   // 月次積立額（円、0なら積立なし）
+  monthlySavingDay?: number;     // 毎月の積立日（1〜28、デフォルト1日）
+  lastAutoContribYearMonth?: string; // 最後に自動積立を適用した年月 "YYYY-MM"
   startDate?: string;
   note?: string;
   updatedAt: string;
@@ -185,6 +188,7 @@ export interface DrawdownEntry {
 
 // 物件・契約情報
 export interface MortgageProperty {
+  id: string;                // 一意ID
   propertyName: string;      // 物件名
   contractDate?: string;     // 契約日 "YYYY-MM-DD"
   priceTotalMan: string;     // 物件価格（万円）
