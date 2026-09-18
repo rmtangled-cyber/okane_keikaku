@@ -88,21 +88,23 @@ export default function LifeEventModal({ event, onSave, onClose }: Props) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              月次影響の終了年
-              <span className="ml-1 text-xs font-normal text-gray-400">省略 = 永続・一時金のみなら不要</span>
-            </label>
-            <input
-              type="number"
-              value={endYear}
-              onChange={e => setEndYear(e.target.value)}
-              placeholder="例: 2045（子の教育費終了など）"
-              min={2020}
-              max={2100}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-          </div>
+          {type !== "一時収入" && type !== "一時支出" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                月次影響の終了年
+                <span className="ml-1 text-xs font-normal text-gray-400">省略 = 永続</span>
+              </label>
+              <input
+                type="number"
+                value={endYear}
+                onChange={e => setEndYear(e.target.value)}
+                placeholder="例: 2045（子の教育費終了など）"
+                min={2020}
+                max={2100}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
