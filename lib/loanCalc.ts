@@ -122,13 +122,13 @@ export function mortgageMonthlyPaymentByYear(
 // 最終実行前は利息のみ支払い、最終実行後に元利均等返済スタート
 export function mortgageMonthlyPaymentWithDrawdown(
   termYears: number,
-  drawdowns: { yearMonth: string; amountMan: number }[],
+  drawdowns: { date: string; amountMan: number }[],
   periodSettings: { fromYear?: number; rate: string; extra: string }[],
   simStartYear: number,
 ): number[] {
   if (!drawdowns.length) return [];
-  const sorted = [...drawdowns].sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
-  const lastDisbYM = sorted[sorted.length - 1].yearMonth;
+  const sorted = [...drawdowns].sort((a, b) => a.date.localeCompare(b.date));
+  const lastDisbYM = sorted[sorted.length - 1].date;
   const lastDisbYear = parseInt(lastDisbYM.split("-")[0]);
   const lastDisbMonth = parseInt(lastDisbYM.split("-")[1]);
 
@@ -157,7 +157,7 @@ export function mortgageMonthlyPaymentWithDrawdown(
 
     // Accumulate disbursements this year
     for (const d of sorted) {
-      if (parseInt(d.yearMonth.split("-")[0]) === calYear) {
+      if (parseInt(d.date.split("-")[0]) === calYear) {
         disbursedBalance += d.amountMan * 10000;
       }
     }

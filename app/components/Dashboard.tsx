@@ -205,7 +205,7 @@ function simulate(
     if (drawdowns.length > 0) {
       return mortgageMonthlyPaymentWithDrawdown(
         mortgageTermYears,
-        drawdowns.map(d => ({ yearMonth: d.yearMonth, amountMan: d.amountMan })),
+        drawdowns.map(d => ({ date: d.date, amountMan: d.amountMan })),
         mortgageSimPlan.periodSettings ?? [],
         startYear,
       );
@@ -457,7 +457,7 @@ export default function Dashboard() {
     if (drawdowns.length > 0) {
       const arr = mortgageMonthlyPaymentWithDrawdown(
         termYears,
-        drawdowns.map(d => ({ yearMonth: d.yearMonth, amountMan: d.amountMan })),
+        drawdowns.map(d => ({ date: d.date, amountMan: d.amountMan })),
         mortgageSimPlan.periodSettings ?? [],
         currentYear,
       );
