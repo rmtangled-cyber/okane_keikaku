@@ -185,6 +185,7 @@ export interface DrawdownEntry {
 
 // 物件・契約情報
 export interface MortgageProperty {
+  id: string;                // 一意ID
   propertyName: string;      // 物件名
   contractDate?: string;     // 契約日 "YYYY-MM-DD"
   priceTotalMan: string;     // 物件価格（万円）
