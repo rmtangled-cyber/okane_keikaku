@@ -9,7 +9,7 @@ import {
 import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, Pencil, Trash2 } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
-import type { DrawdownEntry, MortgageProperty } from "../../lib/types";
+import type { DrawdownEntry, MortgageProperty, PropertyCostItem } from "../../lib/types";
 import MortgagePropertyModal from "./MortgagePropertyModal";
 
 // ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
@@ -283,24 +283,61 @@ export default function MortgageCalc() {
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
-  const [drawdowns, setDrawdowns] = useState<DrawdownEntry[]>([]);
   const [properties, setProperties] = useState<MortgageProperty[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
   const [show5Year, setShow5Year] = useState(false);
 
+  // 旧フォーマットの MortgageProperty → 新フォーマット（costItems）へマイグレーション
+  function migrateProperty(raw: Record<string, unknown>): MortgageProperty {
+    const id = String(raw.id ?? `prop_${Date.now()}`);
+    const propertyName = String(raw.propertyName ?? "");
+    const note = raw.note ? String(raw.note) : undefined;
+    const updatedAt = String(raw.updatedAt ?? new Date().toISOString());
+
+    // すでに新フォーマットの場合はそのまま返す
+    if (Array.isArray(raw.costItems) && raw.costItems.length > 0) {
+      return { id, propertyName, costItems: raw.costItems as PropertyCostItem[], note, updatedAt };
+    }
+
+    // 旧フォーマット: priceTotalMan, depositMan, midPaymentMan, miscCostMan などから変換
+    const price = parseFloat(String(raw.priceTotalMan ?? 0)) || 0;
+    const dep = parseFloat(String(raw.depositMan ?? 0)) || 0;
+    const mid = parseFloat(String(raw.midPaymentMan ?? 0)) || 0;
+    const misc = parseFloat(String(raw.miscCostMan ?? 0)) || 0;
+    const balance = Math.max(0, price - dep - mid);
+    const costItems: PropertyCostItem[] = [];
+
+    if (dep > 0) costItems.push({
+      id: `ci_dep_${id}`, name: "手付金",
+      date: String(raw.contractDate ?? ""), amountMan: dep,
+    });
+    if (mid > 0) costItems.push({
+      id: `ci_mid_${id}`, name: "中間金",
+      date: "", amountMan: mid,
+    });
+    if (balance > 0) costItems.push({
+      id: `ci_bal_${id}`, name: "残金決済",
+      date: String(raw.finalSettlementDate ?? ""), amountMan: balance,
+    });
+    if (misc > 0) costItems.push({
+      id: `ci_misc_${id}`, name: "諸費用",
+      date: "", amountMan: misc,
+    });
+
+    return { id, propertyName, costItems, note, updatedAt };
+  }
+
   // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
     if (!user) return;
-    // Load properties (collection), then try migration from legacy single doc
     loadMortgageProperties().then(async items => {
       if (items.length > 0) {
-        setProperties(items);
+        setProperties(items.map(p => migrateProperty(p as unknown as Record<string, unknown>)));
       } else {
-        // Migration: old single-doc → new collection
         const old = await loadMortgageProperty();
         if (old) {
-          const migrated: MortgageProperty = { ...old, id: old.id ?? `prop_${Date.now()}` };
+          const migrated = migrateProperty(old as unknown as Record<string, unknown>);
           setProperties([migrated]);
           saveMortgageProperties([migrated]);
         }
@@ -312,14 +349,6 @@ export default function MortgageCalc() {
       setBankName(plan.bankName);
       setBankRate(plan.bankRate);
       if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
-      if (plan.drawdownSchedule?.length) {
-        // 旧データ互換: yearMonth (YYYY-MM) → date (YYYY-MM-DD)
-        setDrawdowns(plan.drawdownSchedule.map(d => {
-          if (d.date) return d;
-          const legacy = (d as unknown as Record<string, unknown>)["yearMonth"] as string | undefined;
-          return { ...d, date: legacy ? `${legacy}-01` : "" };
-        }));
-      }
       if (plan.periodSettings?.length) {
         const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
           id: `loaded_${i}`,
@@ -327,7 +356,6 @@ export default function MortgageCalc() {
           rate: p.rate,
           extra: p.extra,
         }));
-        // Ensure base (fromYear=1) exists with id="base"
         if (!loaded.some(rc => rc.fromYear === "1")) {
           loaded.unshift({ id: "base", fromYear: "1", rate: plan.bankRate, extra: "" });
         } else {
@@ -339,6 +367,29 @@ export default function MortgageCalc() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // 融資実行スケジュールを物件の費用項目から自動生成
+  const drawdowns = useMemo((): DrawdownEntry[] => {
+    const items: DrawdownEntry[] = [];
+    for (const prop of properties) {
+      for (const cost of (prop.costItems ?? [])) {
+        if ((cost.amountMan || 0) > 0) {
+          items.push({
+            id: cost.id,
+            date: cost.date ?? "",
+            amountMan: cost.amountMan,
+            label: prop.propertyName ? `${prop.propertyName}: ${cost.name}` : cost.name,
+          });
+        }
+      }
+    }
+    return items.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
+  }, [properties]);
 
   // Base entry tracks bank rate
   useEffect(() => {
@@ -357,11 +408,10 @@ export default function MortgageCalc() {
       await Promise.race([
         saveMortgageSimPlan({
           bankName, bankRate,
-          principalMan: String(drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0)),
+          principalMan: String(drawdowns.reduce((s, d) => s + d.amountMan, 0)),
           termYears,
           monthlyIncomeMan,
           periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
-          drawdownSchedule: drawdowns.length > 0 ? drawdowns : undefined,
           updatedAt: new Date().toISOString(),
         }),
         timeout,
@@ -372,36 +422,6 @@ export default function MortgageCalc() {
       setSaveStatus("error");
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  };
-
-  const resolveDrawdownAmount = (d: DrawdownEntry): number => {
-    let auto = 0;
-    for (const prop of properties) {
-      const price = parseFloat(prop.priceTotalMan) || 0;
-      const dep = parseFloat(prop.depositMan) || 0;
-      const mid = parseFloat(prop.midPaymentMan) || 0;
-      const misc = parseFloat(prop.miscCostMan) || 0;
-      const balance = Math.max(0, price - dep - mid);
-      const payAmounts: Record<string, number> = { deposit: dep, midPayment: mid, finalSettlement: balance, miscCost: misc };
-      const links = prop.paymentLinks ?? {};
-      auto += Object.entries(links).reduce((sum, [key, id]) => id === d.id ? sum + (payAmounts[key] ?? 0) : sum, 0);
-    }
-    return auto > 0 ? auto : d.amountMan;
-  };
-
-  const getDrawdownAutoLabel = (drawdownId: string): string => {
-    const keyLabels: Record<string, string> = { deposit: "手付金", midPayment: "中間金", finalSettlement: "残金決済", miscCost: "諸費用" };
-    const found: string[] = [];
-    for (const prop of properties) {
-      const links = prop.paymentLinks ?? {};
-      for (const [key, id] of Object.entries(links)) {
-        if (id === drawdownId) {
-          const propName = prop.propertyName ? `${prop.propertyName}: ` : "";
-          found.push(`${propName}${keyLabels[key] ?? key}`);
-        }
-      }
-    }
-    return found.join("・");
   };
 
   const handlePropertySave = (prop: MortgageProperty) => {
@@ -423,7 +443,7 @@ export default function MortgageCalc() {
     });
   };
 
-  const principal = drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0) * 10000;
+  const principal = drawdowns.reduce((s, d) => s + d.amountMan, 0) * 10000;
   const termYearsNum = parseInt(termYears) || 35;
   const termMonths = termYearsNum * 12;
   const rate = parseFloat(bankRate) || 0;
@@ -591,17 +611,14 @@ export default function MortgageCalc() {
         ) : (
           <div className="divide-y divide-gray-50">
             {properties.map(prop => {
-              const price = parseFloat(prop.priceTotalMan) || 0;
-              const misc = parseFloat(prop.miscCostMan) || 0;
+              const total = (prop.costItems ?? []).reduce((s, c) => s + (c.amountMan || 0), 0);
               return (
                 <div key={prop.id} className="px-5 py-4 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-800 truncate">{prop.propertyName || "（物件名なし）"}</div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
-                      {price > 0 && <span>物件価格 {price.toLocaleString()}万円</span>}
-                      {misc > 0 && <span>諸費用 {misc.toLocaleString()}万円</span>}
-                      {prop.contractDate && <span>契約日 {prop.contractDate}</span>}
-                      {prop.finalSettlementDate && <span>残金決済 {prop.finalSettlementDate}</span>}
+                      {total > 0 && <span>合計 {total.toLocaleString()}万円</span>}
+                      <span>{(prop.costItems ?? []).length}件の費用</span>
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
                   </div>
@@ -630,7 +647,6 @@ export default function MortgageCalc() {
       {showPropertyModal && (
         <MortgagePropertyModal
           property={editingProperty}
-          drawdowns={drawdowns}
           onSave={handlePropertySave}
           onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
         />
@@ -658,115 +674,56 @@ export default function MortgageCalc() {
         </div>
       </div>
 
-      {/* Drawdown schedule */}
+      {/* Drawdown schedule — auto-generated from property cost items */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <div className="flex items-center gap-2">
             <Calendar size={15} className="text-indigo-500 shrink-0" />
             <div>
               <h3 className="text-sm font-semibold text-gray-800">融資実行スケジュール</h3>
-              <p className="text-xs text-gray-400 mt-0.5">各トランシェの実行年月と金額を入力してください。1回だけ入力すれば通常のローンと同じ計算になります</p>
+              <p className="text-xs text-gray-400 mt-0.5">物件・契約情報の費用から自動生成されます</p>
             </div>
           </div>
         </div>
 
-        {drawdowns.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">実行年月</th>
-                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium">金額（万円）</th>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium">ラベル</th>
-                  <th className="px-4 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {drawdowns.map(d => {
-                  const resolvedAmount = resolveDrawdownAmount(d);
-                  const autoLabel = getDrawdownAutoLabel(d.id);
-                  const displayLabel = autoLabel || d.label || "";
-                  return (
+        {drawdowns.length > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-gray-500 font-medium">支払日</th>
+                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">金額（万円）</th>
+                    <th className="px-4 py-2.5 text-left text-gray-500 font-medium">費用</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {drawdowns.map(d => (
                     <tr key={d.id}>
-                      <td className="px-4 py-2.5">
-                        <input
-                          type="date"
-                          value={d.date}
-                          onChange={e => setDrawdowns(prev => prev.map(x => x.id === d.id ? { ...x, date: e.target.value } : x))}
-                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        />
+                      <td className="px-4 py-2.5 text-gray-700">
+                        {d.date ? d.date : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className={`w-24 rounded-lg px-2 py-1.5 text-sm text-center font-medium ${
-                            autoLabel ? "bg-indigo-50 border border-indigo-200 text-indigo-700" : "bg-gray-50 border border-gray-200 text-gray-700"
-                          }`}>
-                            {resolvedAmount > 0 ? resolvedAmount.toLocaleString() : "—"}
-                          </span>
-                          <span className="text-gray-500">万</span>
-                          {autoLabel && <span className="text-xs text-indigo-400">自動</span>}
-                        </div>
+                      <td className="px-4 py-2.5 text-right font-semibold text-indigo-700">
+                        {d.amountMan.toLocaleString()}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <span className="text-sm text-gray-600">{displayLabel || <span className="text-gray-300">—</span>}</span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => setDrawdowns(prev => prev.filter(x => x.id !== d.id))}
-                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
+                      <td className="px-4 py-2.5 text-gray-500">{d.label}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {drawdowns.length > 0 && (
-          <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
-            合計: {drawdowns.reduce((s, d) => s + resolveDrawdownAmount(d), 0).toLocaleString()}万円
-            {(() => {
-              const sorted = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
-              const last = sorted[sorted.length - 1];
-              return last ? `　最終実行: ${last.date}以降に元利均等返済スタート` : null;
-            })()}
-          </div>
-        )}
-
-        {drawdowns.length === 0 && (
-          <div className="px-5 py-5 text-center">
-            <p className="text-xs text-gray-400 mb-3">融資実行日と金額を追加してください（1件 = 通常の一括融資）</p>
-            <button
-              onClick={() => {
-                const now = new Date();
-                const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-                setDrawdowns([{ id: `dd_${Date.now()}`, date: d, amountMan: 0, label: "" }]);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
-            >
-              <Plus size={14} />
-              融資実行を追加
-            </button>
-          </div>
-        )}
-
-        {drawdowns.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50">
-            <button
-              onClick={() => {
-                const now = new Date();
-                const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-                setDrawdowns(prev => [...prev, { id: `dd_${Date.now()}`, date: d, amountMan: 0, label: "" }]);
-              }}
-              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              <Plus size={13} />
-              さらに追加
-            </button>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
+              合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
+              {(() => {
+                const last = [...drawdowns].filter(d => d.date).at(-1);
+                return last ? `　最終支払日: ${last.date}以降に元利均等返済スタート` : null;
+              })()}
+            </div>
+          </>
+        ) : (
+          <div className="px-5 py-8 text-center text-gray-400">
+            <Calendar size={28} className="mx-auto mb-2 text-gray-200" />
+            <p className="text-xs">物件情報に費用を登録すると、ここに自動表示されます</p>
           </div>
         )}
       </div>
