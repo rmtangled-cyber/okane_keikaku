@@ -368,12 +368,12 @@ export default function MortgageCalc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // 融資実行スケジュールを物件の費用項目から自動生成
+  // 融資実行スケジュールを物件の費用項目（ローン分のみ）から自動生成
   const drawdowns = useMemo((): DrawdownEntry[] => {
     const items: DrawdownEntry[] = [];
     for (const prop of properties) {
       for (const cost of (prop.costItems ?? [])) {
-        if ((cost.amountMan || 0) > 0) {
+        if ((cost.amountMan || 0) > 0 && (cost.paymentType ?? "loan") === "loan") {
           items.push({
             id: cost.id,
             date: cost.date ?? "",
@@ -611,14 +611,17 @@ export default function MortgageCalc() {
         ) : (
           <div className="divide-y divide-gray-50">
             {properties.map(prop => {
-              const total = (prop.costItems ?? []).reduce((s, c) => s + (c.amountMan || 0), 0);
+              const items = prop.costItems ?? [];
+              const loanTotal = items.filter(c => (c.paymentType ?? "loan") === "loan").reduce((s, c) => s + (c.amountMan || 0), 0);
+              const selfTotal = items.filter(c => c.paymentType === "self").reduce((s, c) => s + (c.amountMan || 0), 0);
               return (
                 <div key={prop.id} className="px-5 py-4 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-800 truncate">{prop.propertyName || "（物件名なし）"}</div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
-                      {total > 0 && <span>合計 {total.toLocaleString()}万円</span>}
-                      <span>{(prop.costItems ?? []).length}件の費用</span>
+                      {loanTotal > 0 && <span className="text-blue-600">ローン {loanTotal.toLocaleString()}万円</span>}
+                      {selfTotal > 0 && <span className="text-amber-600">自己資金 {selfTotal.toLocaleString()}万円</span>}
+                      <span>{items.length}件</span>
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
                   </div>
