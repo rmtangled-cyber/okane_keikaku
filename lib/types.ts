@@ -186,23 +186,19 @@ export interface DrawdownEntry {
   label?: string;     // 例: "契約金30%"
 }
 
+// 物件費用項目
+export interface PropertyCostItem {
+  id: string;
+  name: string;       // 費用名（例: 手付金、残金決済）
+  date: string;       // 支払日 "YYYY-MM-DD"
+  amountMan: number;  // 金額（万円）
+}
+
 // 物件・契約情報
 export interface MortgageProperty {
-  id: string;                // 一意ID
-  propertyName: string;      // 物件名
-  contractDate?: string;     // 契約日 "YYYY-MM-DD"
-  priceTotalMan: string;     // 物件価格（万円）
-  depositMan: string;        // 手付金（万円）
-  midPaymentMan: string;     // 中間金（万円）
-  finalSettlementDate?: string; // 残金決済日 "YYYY-MM-DD"
-  miscCostMan: string;       // 諸費用（万円）
-  // 各支払いを融資実行スケジュールのどのエントリに紐づけるか（drawdown entry id）
-  paymentLinks?: {
-    deposit?: string;
-    midPayment?: string;
-    finalSettlement?: string;
-    miscCost?: string;
-  };
+  id: string;
+  propertyName: string;
+  costItems: PropertyCostItem[];
   note?: string;
   updatedAt: string;
 }

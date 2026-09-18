@@ -1,57 +1,51 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
-import type { MortgageProperty, DrawdownEntry } from "../../lib/types";
+import { X, Plus, Trash2 } from "lucide-react";
+import type { MortgageProperty, PropertyCostItem } from "../../lib/types";
 
 interface Props {
   property?: MortgageProperty | null;
-  drawdowns: DrawdownEntry[];
   onSave: (p: MortgageProperty) => void;
   onClose: () => void;
 }
 
-export default function MortgagePropertyModal({ property, drawdowns, onSave, onClose }: Props) {
-  const [form, setForm] = useState({
-    propertyName: property?.propertyName ?? "",
-    contractDate: property?.contractDate ?? "",
-    priceTotalMan: property?.priceTotalMan ?? "",
-    depositMan: property?.depositMan ?? "",
-    midPaymentMan: property?.midPaymentMan ?? "",
-    finalSettlementDate: property?.finalSettlementDate ?? "",
-    miscCostMan: property?.miscCostMan ?? "",
-    paymentLinks: property?.paymentLinks ?? {} as NonNullable<MortgageProperty["paymentLinks"]>,
-    note: property?.note ?? "",
-  });
+export default function MortgagePropertyModal({ property, onSave, onClose }: Props) {
+  const [propertyName, setPropertyName] = useState(property?.propertyName ?? "");
+  const [note, setNote] = useState(property?.note ?? "");
+  const [costItems, setCostItems] = useState<PropertyCostItem[]>(
+    property?.costItems?.length
+      ? property.costItems
+      : [{ id: `ci_${Date.now()}`, name: "", date: "", amountMan: 0 }]
+  );
+
+  function addCostItem() {
+    setCostItems(prev => [...prev, { id: `ci_${Date.now()}`, name: "", date: "", amountMan: 0 }]);
+  }
+
+  function updateCostItem(id: string, field: keyof PropertyCostItem, value: string | number) {
+    setCostItems(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  }
+
+  function removeCostItem(id: string) {
+    setCostItems(prev => prev.filter(c => c.id !== id));
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.propertyName) return;
+    if (!propertyName.trim()) return;
+    const validItems = costItems.filter(c => c.name.trim() && c.amountMan > 0);
     onSave({
-      ...form,
       id: property?.id ?? `prop_${Date.now()}`,
+      propertyName: propertyName.trim(),
+      costItems: validItems,
+      note: note || undefined,
       updatedAt: new Date().toISOString(),
     });
   }
 
-  const price = parseFloat(form.priceTotalMan) || 0;
-  const dep = parseFloat(form.depositMan) || 0;
-  const mid = parseFloat(form.midPaymentMan) || 0;
-  const misc = parseFloat(form.miscCostMan) || 0;
-  const balance = Math.max(0, price - dep - mid);
-
-  type PayKey = keyof NonNullable<MortgageProperty["paymentLinks"]>;
-  const allPayments: { key: PayKey; label: string; amount: number; date?: string }[] = ([
-    { key: "deposit" as PayKey, label: "手付金", amount: dep, date: form.contractDate || undefined },
-    { key: "midPayment" as PayKey, label: "中間金", amount: mid },
-    { key: "finalSettlement" as PayKey, label: "残金決済", amount: balance, date: form.finalSettlementDate || undefined },
-    { key: "miscCost" as PayKey, label: "諸費用", amount: misc },
-  ] as { key: PayKey; label: string; amount: number; date?: string }[]).filter(p => p.amount > 0);
-
-  const ddOptions = [...drawdowns].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
-  const links = form.paymentLinks ?? {};
-
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400";
+  const totalMan = costItems.reduce((s, c) => s + (Number(c.amountMan) || 0), 0);
+  const inputCls = "border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -64,98 +58,94 @@ export default function MortgagePropertyModal({ property, drawdowns, onSave, onC
             <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* 物件名 */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">物件名 <span className="text-red-500">*</span></label>
-            <input type="text" value={form.propertyName} placeholder="例: ○○マンション 302号室" required
-              onChange={e => setForm(f => ({ ...f, propertyName: e.target.value }))}
-              className={inputCls} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">契約日</label>
-              <input type="date" value={form.contractDate ?? ""}
-                onChange={e => setForm(f => ({ ...f, contractDate: e.target.value }))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">物件価格（万円）</label>
-              <input type="number" value={form.priceTotalMan} placeholder="4500" min={0}
-                onChange={e => setForm(f => ({ ...f, priceTotalMan: e.target.value }))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">手付金（万円）</label>
-              <input type="number" value={form.depositMan} placeholder="450" min={0}
-                onChange={e => setForm(f => ({ ...f, depositMan: e.target.value }))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">中間金（万円）</label>
-              <input type="number" value={form.midPaymentMan} placeholder="0" min={0}
-                onChange={e => setForm(f => ({ ...f, midPaymentMan: e.target.value }))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">残金決済日</label>
-              <input type="date" value={form.finalSettlementDate ?? ""}
-                onChange={e => setForm(f => ({ ...f, finalSettlementDate: e.target.value }))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">諸費用（万円）</label>
-              <input type="number" value={form.miscCostMan} placeholder="150" min={0}
-                onChange={e => setForm(f => ({ ...f, miscCostMan: e.target.value }))}
-                className={inputCls} />
-            </div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              物件名 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={propertyName}
+              onChange={e => setPropertyName(e.target.value)}
+              placeholder="例: ○○マンション 302号室"
+              required
+              className={`w-full ${inputCls}`}
+            />
           </div>
 
-          {allPayments.length > 0 && (
-            <div className="rounded-xl border border-gray-100 overflow-hidden">
-              <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">支払いスケジュール（融資実行日との紐づけ）</div>
-              <div className="divide-y divide-gray-50">
-                {allPayments.map(p => (
-                  <div key={p.key} className="flex items-center gap-2 px-3 py-2">
-                    <div className="w-24 shrink-0">
-                      <div className="text-xs font-medium text-gray-700">{p.label}</div>
-                      {p.date && <div className="text-xs text-gray-400 mt-0.5">{p.date}</div>}
-                    </div>
-                    <div className="text-xs font-semibold text-gray-800 w-20 text-right shrink-0">
-                      ¥{p.amount.toLocaleString()}万
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <select
-                        value={links[p.key] ?? ""}
-                        onChange={e => setForm(f => ({
-                          ...f,
-                          paymentLinks: { ...(f.paymentLinks ?? {}), [p.key]: e.target.value || undefined },
-                        }))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      >
-                        <option value="">— 紐づけない —</option>
-                        {ddOptions.map(d => (
-                          <option key={d.id} value={d.id}>{d.date}{d.label ? `（${d.label}）` : ""}</option>
-                        ))}
-                      </select>
-                    </div>
+          {/* 費用一覧 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-gray-600">費用一覧</label>
+              {totalMan > 0 && (
+                <span className="text-xs text-blue-600 font-medium">合計 {totalMan.toLocaleString()}万円</span>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {costItems.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={item.name}
+                    onChange={e => updateCostItem(item.id, "name", e.target.value)}
+                    placeholder="費用名（例: 手付金）"
+                    className={`flex-1 min-w-0 ${inputCls}`}
+                  />
+                  <input
+                    type="date"
+                    value={item.date}
+                    onChange={e => updateCostItem(item.id, "date", e.target.value)}
+                    className={`w-36 shrink-0 ${inputCls}`}
+                  />
+                  <div className="flex items-center gap-1 shrink-0">
+                    <input
+                      type="number"
+                      value={item.amountMan || ""}
+                      onChange={e => updateCostItem(item.id, "amountMan", parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                      min={0}
+                      className={`w-24 text-right ${inputCls}`}
+                    />
+                    <span className="text-xs text-gray-500 whitespace-nowrap">万円</span>
                   </div>
-                ))}
-                <div className="flex justify-between px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-800">
-                  <span>合計（諸費用込み）</span>
-                  <span>¥{(price + misc).toLocaleString()}万</span>
+                  <button
+                    type="button"
+                    onClick={() => removeCostItem(item.id)}
+                    disabled={costItems.length === 1 && idx === 0}
+                    className="p-1.5 text-gray-300 hover:text-red-500 rounded transition-colors disabled:opacity-30"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-              </div>
+              ))}
             </div>
-          )}
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
-            <textarea value={form.note ?? ""} rows={2} placeholder="備考など"
-              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+            <button
+              type="button"
+              onClick={addCostItem}
+              className="mt-2 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <Plus size={13} />
+              費用を追加
+            </button>
           </div>
 
-          <div className="flex gap-3 pt-2">
+          {/* メモ */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">メモ（任意）</label>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              rows={2}
+              placeholder="備考など"
+              className={`w-full ${inputCls} resize-none`}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
               className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               キャンセル
