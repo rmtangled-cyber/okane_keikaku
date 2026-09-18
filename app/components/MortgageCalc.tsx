@@ -691,29 +691,43 @@ export default function MortgageCalc() {
 
         {drawdowns.length > 0 ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-gray-500 font-medium">支払日</th>
-                    <th className="px-4 py-2.5 text-right text-gray-500 font-medium">金額（万円）</th>
-                    <th className="px-4 py-2.5 text-left text-gray-500 font-medium">費用</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {drawdowns.map(d => (
-                    <tr key={d.id}>
-                      <td className="px-4 py-2.5 text-gray-700">
-                        {d.date ? d.date : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-indigo-700">
-                        {d.amountMan.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-500">{d.label}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y divide-gray-50">
+              {(() => {
+                const grouped = new Map<string, typeof drawdowns>();
+                for (const d of drawdowns) {
+                  const key = d.date || "__nodate__";
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push(d);
+                }
+                const sortedKeys = [...grouped.keys()].sort((a, b) => {
+                  if (a === "__nodate__") return 1;
+                  if (b === "__nodate__") return -1;
+                  return a.localeCompare(b);
+                });
+                return sortedKeys.map(key => {
+                  const items = grouped.get(key)!;
+                  const total = items.reduce((s, d) => s + d.amountMan, 0);
+                  const date = key === "__nodate__" ? null : key;
+                  return (
+                    <div key={key} className="px-5 py-3.5">
+                      <div className="flex items-baseline justify-between mb-1.5">
+                        <span className="text-sm font-semibold text-gray-700">
+                          {date ?? <span className="text-gray-300">日付未設定</span>}
+                        </span>
+                        <span className="text-sm font-bold text-indigo-700">{total.toLocaleString()}万円</span>
+                      </div>
+                      <ul className="space-y-0.5 pl-1">
+                        {items.map(d => (
+                          <li key={d.id} className="flex items-center justify-between text-xs text-gray-500">
+                            <span>・{d.label}</span>
+                            <span className="text-gray-400 tabular-nums">{d.amountMan.toLocaleString()}万円</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                });
+              })()}
             </div>
             <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
               合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
