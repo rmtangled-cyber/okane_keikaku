@@ -200,6 +200,7 @@ export interface MortgageProperty {
   id: string;
   propertyName: string;
   costItems: PropertyCostItem[];
+  bonusRepaymentMan?: number; // ボーナス返済額（万円/回、年2回）
   note?: string;
   updatedAt: string;
 }

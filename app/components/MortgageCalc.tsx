@@ -84,6 +84,7 @@ function simulateCustom(
   principal: number,
   termMonths: number,
   rateChanges: { fromYear: number; rate: number; extra: number }[],
+  bonusSemiAnnual: number = 0,
 ): SimResult {
   const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
 
@@ -145,6 +146,14 @@ function simulateCustom(
       periodCapped = ideal > cap;
       currentPayment = balance > 0 ? Math.min(ideal, cap) : 0;
       periodStartYear = year;
+    }
+
+    // Bonus repayment at month 6 and 12 of each year
+    if (bonusSemiAnnual > 0 && m % 6 === 0 && balance > 0) {
+      const applied = Math.min(bonusSemiAnnual, balance);
+      balance = Math.max(0, balance - applied);
+      totalExtra += applied;
+      annualPrincipalAcc += applied;
     }
 
     // Monthly interest/payment
@@ -460,11 +469,15 @@ export default function MortgageCalc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [JSON.stringify(rateChanges), rate, termYearsNum]);
 
+  const bonusSemiAnnual = useMemo(() =>
+    properties.reduce((s, p) => s + ((p.bonusRepaymentMan ?? 0) * 10000), 0),
+  [properties]);
+
   const sim = useMemo(() => {
     if (!principal) return null;
-    return simulateCustom(principal, termMonths, parsedRateChanges);
+    return simulateCustom(principal, termMonths, parsedRateChanges, bonusSemiAnnual);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [principal, termMonths, JSON.stringify(parsedRateChanges)]);
+  }, [principal, termMonths, JSON.stringify(parsedRateChanges), bonusSemiAnnual]);
 
   const scenarioResults = useMemo(() => {
     if (!principal) return null;
@@ -621,6 +634,9 @@ export default function MortgageCalc() {
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
                       {loanTotal > 0 && <span className="text-blue-600">ローン {loanTotal.toLocaleString()}万円</span>}
                       {selfTotal > 0 && <span className="text-amber-600">自己資金 {selfTotal.toLocaleString()}万円</span>}
+                      {(prop.bonusRepaymentMan ?? 0) > 0 && (
+                        <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年2回</span>
+                      )}
                       <span>{items.length}件</span>
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
@@ -913,6 +929,26 @@ export default function MortgageCalc() {
         </div>
       )}
 
+      {/* Annual interest/principal breakdown chart — shown right after rate plan */}
+      {principal > 0 && sim && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
+          <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={sim.annualBreakdown} barSize={termYearsNum > 30 ? 6 : 10}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
+              <Tooltip content={<AnnualBreakdownTooltip />} />
+              <Legend />
+              <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
+              <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Simulation results */}
       {principal > 0 && sim && (
         <>
@@ -996,24 +1032,6 @@ export default function MortgageCalc() {
                 <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
                 <Line dataKey="total" name="合計残債" stroke="#f59e0b" strokeWidth={1.5} dot={false} type="monotone" strokeDasharray="4 2" />
               </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Annual interest/principal breakdown chart */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
-            <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={sim.annualBreakdown} barSize={termYearsNum > 30 ? 6 : 10}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
-                  ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-                <Tooltip content={<AnnualBreakdownTooltip />} />
-                <Legend />
-                <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
-                <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
-              </BarChart>
             </ResponsiveContainer>
           </div>
 

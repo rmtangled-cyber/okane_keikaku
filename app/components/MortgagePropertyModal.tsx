@@ -13,6 +13,9 @@ interface Props {
 export default function MortgagePropertyModal({ property, onSave, onClose }: Props) {
   const [propertyName, setPropertyName] = useState(property?.propertyName ?? "");
   const [note, setNote] = useState(property?.note ?? "");
+  const [bonusRepaymentMan, setBonusRepaymentMan] = useState(
+    property?.bonusRepaymentMan ? String(property.bonusRepaymentMan) : ""
+  );
   const [costItems, setCostItems] = useState<PropertyCostItem[]>(
     property?.costItems?.length
       ? property.costItems
@@ -35,10 +38,12 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
     e.preventDefault();
     if (!propertyName.trim()) return;
     const validItems = costItems.filter(c => c.name.trim() && c.amountMan > 0);
+    const bonus = parseFloat(bonusRepaymentMan);
     onSave({
       id: property?.id ?? `prop_${Date.now()}`,
       propertyName: propertyName.trim(),
       costItems: validItems,
+      bonusRepaymentMan: bonus > 0 ? bonus : undefined,
       note: note || undefined,
       updatedAt: new Date().toISOString(),
     });
@@ -156,6 +161,28 @@ export default function MortgagePropertyModal({ property, onSave, onClose }: Pro
               <Plus size={13} />
               費用を追加
             </button>
+          </div>
+
+          {/* ボーナス返済額 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              ボーナス返済額（万円/回・任意）
+              <span className="ml-1.5 font-normal text-gray-400">年2回（6月・12月）の加算分</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={bonusRepaymentMan}
+                onChange={e => setBonusRepaymentMan(e.target.value)}
+                placeholder="0"
+                min={0}
+                className={`w-28 text-right ${inputCls}`}
+              />
+              <span className="text-xs text-gray-500">万円 × 年2回</span>
+              {bonusRepaymentMan && parseFloat(bonusRepaymentMan) > 0 && (
+                <span className="text-xs text-blue-500">年間 {(parseFloat(bonusRepaymentMan) * 2).toLocaleString()}万円</span>
+              )}
+            </div>
           </div>
 
           {/* メモ */}
