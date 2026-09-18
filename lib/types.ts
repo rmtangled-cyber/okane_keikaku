@@ -199,6 +199,7 @@ export interface PropertyCostItem {
 export interface MortgageProperty {
   id: string;
   propertyName: string;
+  borrowerId?: "self" | "spouse"; // 借入名義人
   costItems: PropertyCostItem[];
   bonusRepaymentMan?: number; // ボーナス返済額（万円/回、年2回）
   note?: string;
