@@ -59,6 +59,8 @@ export interface FundHolding {
   currentValue: number;          // 現在評価額（円）
   expectedAnnualReturn: number;  // 期待年利（%）
   monthlyContribution: number;   // 月次積立額（円、0なら積立なし）
+  monthlySavingDay?: number;     // 毎月の積立日（1〜28、デフォルト1日）
+  lastAutoContribYearMonth?: string; // 最後に自動積立を適用した年月 "YYYY-MM"
   startDate?: string;
   note?: string;
   updatedAt: string;

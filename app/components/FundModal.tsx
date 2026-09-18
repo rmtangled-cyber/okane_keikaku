@@ -23,6 +23,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
   const [currentValue, setCurrentValue] = useState("");
   const [expectedReturn, setExpectedReturn] = useState("");
   const [monthlyContrib, setMonthlyContrib] = useState("");
+  const [savingDay, setSavingDay] = useState("1");
   const [startDate, setStartDate] = useState("");
   const [note, setNote] = useState("");
   const [fetching, setFetching] = useState(false);
@@ -38,6 +39,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
       setCurrentValue(String(fund.currentValue));
       setExpectedReturn(String(fund.expectedAnnualReturn));
       setMonthlyContrib(String(fund.monthlyContribution));
+      setSavingDay(String(fund.monthlySavingDay ?? 1));
       setStartDate(fund.startDate ?? "");
       setNote(fund.note ?? "");
     }
@@ -76,6 +78,7 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
       currentValue: cv2,
       expectedAnnualReturn: parseFloat(expectedReturn) || 0,
       monthlyContribution: parseFloat(monthlyContrib) || 0,
+      monthlySavingDay: parseFloat(monthlyContrib) > 0 ? (parseInt(savingDay) || 1) : undefined,
       startDate: startDate || undefined,
       note: note || undefined,
     });
@@ -211,6 +214,28 @@ export default function FundModal({ fund, onSave, onClose }: Props) {
               />
             </div>
           </div>
+
+          {/* 積立日 — 月次積立額が設定されているときのみ表示 */}
+          {mc > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                積立日
+                <span className="ml-1 text-xs font-normal text-gray-400">毎月この日に自動で金額を加算します</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">毎月</span>
+                <input
+                  type="number"
+                  value={savingDay}
+                  onChange={e => setSavingDay(e.target.value)}
+                  min={1}
+                  max={28}
+                  className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-500">日</span>
+              </div>
+            </div>
+          )}
 
           {/* Preview */}
           {cv > 0 && (
