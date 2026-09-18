@@ -195,11 +195,22 @@ export interface PropertyCostItem {
   paymentType?: "loan" | "self"; // ローン or 自己資金（省略=ローン）
 }
 
+export interface PropertyRateChange {
+  id: string;
+  fromYear: string;
+  rate: string;
+  extra: string; // 繰り上げ返済額（万円）
+}
+
 // 物件・契約情報
 export interface MortgageProperty {
   id: string;
   propertyName: string;
   borrowerId?: "self" | "spouse"; // 借入名義人
+  bankName?: string;    // 金融機関名
+  bankRate?: string;    // 借入金利（%）
+  termYears?: string;   // 返済期間（年）
+  rateChanges?: PropertyRateChange[]; // 金利変更プラン
   costItems: PropertyCostItem[];
   bonusRepaymentMan?: number; // ボーナス返済額（万円/回、年2回）
   note?: string;

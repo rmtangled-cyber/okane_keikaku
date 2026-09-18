@@ -4,60 +4,13 @@ import { useState, useMemo, useEffect } from "react";
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, ReferenceLine,
+  ResponsiveContainer, Legend,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, X, TrendingUp, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Save, Plus, Calendar, Pencil, Trash2 } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty, loadUserProfile } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
-import type { DrawdownEntry, MortgageProperty, PropertyCostItem, UserProfile } from "../../lib/types";
+import type { DrawdownEntry, MortgageProperty, PropertyCostItem, PropertyRateChange, UserProfile } from "../../lib/types";
 import MortgagePropertyModal, { type BorrowerOption } from "./MortgagePropertyModal";
-
-// ── 日銀政策金利シナリオ ──────────────────────────────────────────────────────
-
-// 変動金利の仕組み: あなたの金利 = 政策金利 + スプレッド（優遇幅を差し引いた固定差）
-// 出典: 日銀 https://www.boj.or.jp/statistics/index.htm
-const CURRENT_POLICY_RATE = 0.5; // 日銀政策金利（2026年8月時点）
-const THIS_YEAR = new Date().getFullYear();
-
-interface ScenarioDef {
-  id: string;
-  label: string;
-  description: string;
-  accent: string;
-  changes: { calYear: number; policyRate: number }[];
-}
-
-const BOJ_SCENARIOS: ScenarioDef[] = [
-  {
-    id: "hold",
-    label: "現状維持",
-    description: "政策金利 0.5% で据え置き",
-    accent: "border-green-300 bg-green-50",
-    changes: [],
-  },
-  {
-    id: "moderate",
-    label: "緩やか上昇（標準予想）",
-    description: "2027年に1.25%、2028年以降1.75%で横ばい（三井住友DSアセット予想）",
-    accent: "border-blue-300 bg-blue-50",
-    changes: [
-      { calYear: THIS_YEAR + 1, policyRate: 1.25 },
-      { calYear: THIS_YEAR + 2, policyRate: 1.75 },
-    ],
-  },
-  {
-    id: "aggressive",
-    label: "大幅上昇（悲観シナリオ）",
-    description: "2032年頃に政策金利が2.5%まで段階的に上昇するケース",
-    accent: "border-red-300 bg-red-50",
-    changes: [
-      { calYear: THIS_YEAR + 1, policyRate: 1.25 },
-      { calYear: THIS_YEAR + 2, policyRate: 1.75 },
-      { calYear: THIS_YEAR + 4, policyRate: 2.0 },
-      { calYear: THIS_YEAR + 6, policyRate: 2.5 },
-    ],
-  },
-];
 
 function calcPayment(principal: number, annualPct: number, months: number): number {
   if (months <= 0 || principal <= 0) return 0;
@@ -66,9 +19,6 @@ function calcPayment(principal: number, annualPct: number, months: number): numb
   return principal * r * Math.pow(1 + r, months) / (Math.pow(1 + r, months) - 1);
 }
 
-// ── 任意タイミング金利変更対応シミュレーション (5年ルール + 125%ルール) ────────
-
-interface RateChange { id: string; fromYear: string; rate: string; extra: string }
 interface SimPeriod { label: string; payment: number; capped: boolean; rateAtStart: number }
 interface SimResult {
   periods: SimPeriod[];
@@ -118,7 +68,6 @@ function simulateCustom(
     const isFirstMonthOfYear = (m - 1) % 12 === 0;
     const isFirstMonthOf5YearPeriod = m > 1 && (m - 1) % 60 === 0;
 
-    // Year start: apply extra payments and update rate
     if (isFirstMonthOfYear && year > 1) {
       for (const rc of sorted) {
         if (rc.fromYear === year && rc.extra > 0 && balance > 0) {
@@ -131,7 +80,6 @@ function simulateCustom(
       currentRate = getRateForYear(year);
     }
 
-    // 5-year rule: record period and recalculate payment
     if (isFirstMonthOf5YearPeriod) {
       const periodEndYear = (m - 1) / 12;
       periods.push({
@@ -148,7 +96,6 @@ function simulateCustom(
       periodStartYear = year;
     }
 
-    // Bonus repayment at month 6 and 12 of each year
     if (bonusSemiAnnual > 0 && m % 6 === 0 && balance > 0) {
       const applied = Math.min(bonusSemiAnnual, balance);
       balance = Math.max(0, balance - applied);
@@ -156,7 +103,6 @@ function simulateCustom(
       annualPrincipalAcc += applied;
     }
 
-    // Monthly interest/payment
     const balanceBeforeMonthly = balance;
     const monthlyInterest = balance * currentRate / 100 / 12;
     if (currentPayment >= monthlyInterest) {
@@ -207,37 +153,9 @@ function simulateCustom(
   };
 }
 
-// ── クイック比較用 ────────────────────────────────────────────────────────────
-
-function calcLoanTotal(principal: number, termMonths: number, baseRate: number, hike5: number, hike10: number) {
-  const n1 = Math.min(60, termMonths);
-  const n2 = Math.min(60, termMonths - n1);
-  const n3 = Math.max(0, termMonths - n1 - n2);
-  const r1 = baseRate, r2 = baseRate + hike5, r3 = baseRate + hike5 + hike10;
-  const p1 = calcPayment(principal, r1, termMonths);
-  const b1 = Math.max(0, principal * Math.pow(1 + r1/100/12, n1) - p1 * (Math.pow(1 + r1/100/12, n1) - 1) / (r1/100/12 || 1));
-  const p2 = n2 > 0 && b1 > 0 ? calcPayment(b1, r2, termMonths - n1) : 0;
-  const b2 = n2 > 0 && p2 > 0 ? Math.max(0, b1 * Math.pow(1 + r2/100/12, n2) - p2 * (Math.pow(1 + r2/100/12, n2) - 1) / (r2/100/12 || 1)) : 0;
-  const p3 = n3 > 0 && b2 > 0 ? calcPayment(b2, r3, n3) : 0;
-  const total = p1 * n1 + p2 * n2 + p3 * n3;
-  return { totalPaid: Math.round(total), totalInterest: Math.round(total - principal) };
-}
-
-interface Scenario { label: string; hike5: number; hike10: number }
-const SCENARIOS: Scenario[] = [
-  { label: "現状維持",           hike5: 0,   hike10: 0   },
-  { label: "+0.5%（5年後）",     hike5: 0.5, hike10: 0   },
-  { label: "+1.0%（5年後）",     hike5: 1.0, hike10: 0   },
-  { label: "+1.5%（5年後）",     hike5: 1.5, hike10: 0   },
-  { label: "+2.0%（5年後）",     hike5: 2.0, hike10: 0   },
-  { label: "+1.0% → +1.0%",    hike5: 1.0, hike10: 1.0 },
-  { label: "+2.0% → +1.0%",    hike5: 2.0, hike10: 1.0 },
-];
-
 const fmt = (v: number) =>
   v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000)}万`;
 
-// ── 年次返済内訳カスタムTooltip ───────────────────────────────────────────────
 function AnnualBreakdownTooltip({ active, payload, label }: {
   active?: boolean;
   payload?: { name: string; value: number }[];
@@ -260,10 +178,6 @@ function AnnualBreakdownTooltip({ active, payload, label }: {
           <span className="text-gray-500">月次換算</span>
           <span className="font-medium text-gray-700">{fmt(monthly)}</span>
         </div>
-        <div className="flex justify-between gap-4 text-gray-400">
-          <span>ボーナス払い</span>
-          <span>—</span>
-        </div>
         <div className="border-t border-gray-100 pt-1 mt-1 space-y-0.5">
           <div className="flex justify-between gap-4">
             <span className="text-red-500">利息</span>
@@ -279,38 +193,47 @@ function AnnualBreakdownTooltip({ active, payload, label }: {
   );
 }
 
+interface BorrowerSimData {
+  borrowerId: string;
+  label: string;
+  properties: MortgageProperty[];
+  totalPrincipal: number;
+  initialMonthly: number;
+  maxTermYears: number;
+  sim: SimResult;
+  hasCap: boolean;
+  hasUnpaid: boolean;
+}
+
 export default function MortgageCalc() {
   const { user } = useAuth();
-  const [termYears, setTermYears] = useState("35");
-  const [bankName, setBankName] = useState("千葉銀行");
-  const [bankRate, setBankRate] = useState("1.075");
-  const [editingBank, setEditingBank] = useState(false);
-  const [showScenarios, setShowScenarios] = useState(false);
-  const [rateChanges, setRateChanges] = useState<RateChange[]>([
-    { id: "base", fromYear: "1", rate: "1.075", extra: "" },
-  ]);
   const [monthlyIncomeMan, setMonthlyIncomeMan] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "login-required">("idle");
-  const [showScenarioPicker, setShowScenarioPicker] = useState(false);
   const [properties, setProperties] = useState<MortgageProperty[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
-  const [show5Year, setShow5Year] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [expandedBorrowers, setExpandedBorrowers] = useState<Record<string, boolean>>({});
 
-  // 旧フォーマットの MortgageProperty → 新フォーマット（costItems）へマイグレーション
   function migrateProperty(raw: Record<string, unknown>): MortgageProperty {
     const id = String(raw.id ?? `prop_${Date.now()}`);
     const propertyName = String(raw.propertyName ?? "");
     const note = raw.note ? String(raw.note) : undefined;
     const updatedAt = String(raw.updatedAt ?? new Date().toISOString());
+    const borrowerId = raw.borrowerId as "self" | "spouse" | undefined;
+    const bankName = raw.bankName as string | undefined;
+    const bankRate = raw.bankRate as string | undefined;
+    const termYears = raw.termYears as string | undefined;
+    const rateChanges = raw.rateChanges as PropertyRateChange[] | undefined;
+    const bonusRepaymentMan = raw.bonusRepaymentMan as number | undefined;
 
-    // すでに新フォーマットの場合はそのまま返す
     if (Array.isArray(raw.costItems) && raw.costItems.length > 0) {
-      return { id, propertyName, costItems: raw.costItems as PropertyCostItem[], note, updatedAt };
+      return {
+        id, propertyName, borrowerId, bankName, bankRate, termYears, rateChanges,
+        costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, note, updatedAt,
+      };
     }
 
-    // 旧フォーマット: priceTotalMan, depositMan, midPaymentMan, miscCostMan などから変換
     const price = parseFloat(String(raw.priceTotalMan ?? 0)) || 0;
     const dep = parseFloat(String(raw.depositMan ?? 0)) || 0;
     const mid = parseFloat(String(raw.midPaymentMan ?? 0)) || 0;
@@ -318,27 +241,14 @@ export default function MortgageCalc() {
     const balance = Math.max(0, price - dep - mid);
     const costItems: PropertyCostItem[] = [];
 
-    if (dep > 0) costItems.push({
-      id: `ci_dep_${id}`, name: "手付金",
-      date: String(raw.contractDate ?? ""), amountMan: dep,
-    });
-    if (mid > 0) costItems.push({
-      id: `ci_mid_${id}`, name: "中間金",
-      date: "", amountMan: mid,
-    });
-    if (balance > 0) costItems.push({
-      id: `ci_bal_${id}`, name: "残金決済",
-      date: String(raw.finalSettlementDate ?? ""), amountMan: balance,
-    });
-    if (misc > 0) costItems.push({
-      id: `ci_misc_${id}`, name: "諸費用",
-      date: "", amountMan: misc,
-    });
+    if (dep > 0) costItems.push({ id: `ci_dep_${id}`, name: "手付金", date: String(raw.contractDate ?? ""), amountMan: dep });
+    if (mid > 0) costItems.push({ id: `ci_mid_${id}`, name: "中間金", date: "", amountMan: mid });
+    if (balance > 0) costItems.push({ id: `ci_bal_${id}`, name: "残金決済", date: String(raw.finalSettlementDate ?? ""), amountMan: balance });
+    if (misc > 0) costItems.push({ id: `ci_misc_${id}`, name: "諸費用", date: "", amountMan: misc });
 
-    return { id, propertyName, costItems, note, updatedAt };
+    return { id, propertyName, borrowerId, bankName, bankRate, termYears, rateChanges, costItems, bonusRepaymentMan, note, updatedAt };
   }
 
-  // ログイン後にFirestoreから設定を読み込む
   useEffect(() => {
     if (!user) return;
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
@@ -356,56 +266,10 @@ export default function MortgageCalc() {
     });
     loadMortgageSimPlan().then(plan => {
       if (!plan) return;
-      setTermYears(plan.termYears);
-      setBankName(plan.bankName);
-      setBankRate(plan.bankRate);
       if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
-      if (plan.periodSettings?.length) {
-        const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
-          id: `loaded_${i}`,
-          fromYear: String(p.fromYear ?? (i * 5 + 1)),
-          rate: p.rate,
-          extra: p.extra,
-        }));
-        if (!loaded.some(rc => rc.fromYear === "1")) {
-          loaded.unshift({ id: "base", fromYear: "1", rate: plan.bankRate, extra: "" });
-        } else {
-          const idx = loaded.findIndex(rc => rc.fromYear === "1");
-          loaded[idx] = { ...loaded[idx], id: "base", rate: plan.bankRate };
-        }
-        setRateChanges(loaded);
-      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  // 融資実行スケジュールを物件の費用項目（ローン分のみ）から自動生成
-  const drawdowns = useMemo((): DrawdownEntry[] => {
-    const items: DrawdownEntry[] = [];
-    for (const prop of properties) {
-      for (const cost of (prop.costItems ?? [])) {
-        if ((cost.amountMan || 0) > 0 && (cost.paymentType ?? "loan") === "loan") {
-          items.push({
-            id: cost.id,
-            date: cost.date ?? "",
-            amountMan: cost.amountMan,
-            label: prop.propertyName ? `${prop.propertyName}: ${cost.name}` : cost.name,
-          });
-        }
-      }
-    }
-    return items.sort((a, b) => {
-      if (!a.date && !b.date) return 0;
-      if (!a.date) return 1;
-      if (!b.date) return -1;
-      return a.date.localeCompare(b.date);
-    });
-  }, [properties]);
-
-  // Base entry tracks bank rate
-  useEffect(() => {
-    setRateChanges(prev => prev.map(rc => rc.id === "base" ? { ...rc, rate: bankRate } : rc));
-  }, [bankRate]);
 
   const handleSave = async () => {
     if (!user) {
@@ -418,11 +282,12 @@ export default function MortgageCalc() {
       const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
       await Promise.race([
         saveMortgageSimPlan({
-          bankName, bankRate,
-          principalMan: String(drawdowns.reduce((s, d) => s + d.amountMan, 0)),
-          termYears,
+          bankName: "",
+          bankRate: "",
+          principalMan: "0",
+          termYears: "35",
           monthlyIncomeMan,
-          periodSettings: rateChanges.map(rc => ({ fromYear: parseInt(rc.fromYear) || 1, rate: rc.rate, extra: rc.extra })),
+          periodSettings: [],
           updatedAt: new Date().toISOString(),
         }),
         timeout,
@@ -454,22 +319,27 @@ export default function MortgageCalc() {
     });
   };
 
-  const principal = drawdowns.reduce((s, d) => s + d.amountMan, 0) * 10000;
-  const termYearsNum = parseInt(termYears) || 35;
-  const termMonths = termYearsNum * 12;
-  const rate = parseFloat(bankRate) || 0;
-
-  const parsedRateChanges = useMemo(() =>
-    [...rateChanges]
-      .filter(rc => { const y = parseInt(rc.fromYear); return y >= 1 && y <= termYearsNum; })
-      .sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear))
-      .map(rc => ({
-        fromYear: parseInt(rc.fromYear) || 1,
-        rate: parseFloat(rc.rate) || rate,
-        extra: (parseFloat(rc.extra) || 0) * 10000,
-      })),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [JSON.stringify(rateChanges), rate, termYearsNum]);
+  const drawdowns = useMemo((): DrawdownEntry[] => {
+    const items: DrawdownEntry[] = [];
+    for (const prop of properties) {
+      for (const cost of (prop.costItems ?? [])) {
+        if ((cost.amountMan || 0) > 0 && (cost.paymentType ?? "loan") === "loan") {
+          items.push({
+            id: cost.id,
+            date: cost.date ?? "",
+            amountMan: cost.amountMan,
+            label: prop.propertyName ? `${prop.propertyName}: ${cost.name}` : cost.name,
+          });
+        }
+      }
+    }
+    return items.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
+  }, [properties]);
 
   const borrowerOptions = useMemo((): BorrowerOption[] => {
     const selfLabel = userProfile?.displayName || "自分";
@@ -484,79 +354,123 @@ export default function MortgageCalc() {
     return borrowerOptions.find(o => o.id === prop.borrowerId)?.label ?? null;
   };
 
-  const bonusSemiAnnual = useMemo(() =>
-    properties.reduce((s, p) => s + ((p.bonusRepaymentMan ?? 0) * 10000), 0),
-  [properties]);
+  const borrowerSims = useMemo((): BorrowerSimData[] => {
+    const groups = new Map<string, MortgageProperty[]>();
+    for (const prop of properties) {
+      const key = prop.borrowerId ?? "unknown";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(prop);
+    }
 
-  const sim = useMemo(() => {
-    if (!principal) return null;
-    return simulateCustom(principal, termMonths, parsedRateChanges, bonusSemiAnnual);
+    const result: BorrowerSimData[] = [];
+
+    for (const [bid, props] of groups) {
+      const label = borrowerOptions.find(o => o.id === bid)?.label
+        ?? (bid === "unknown" ? "未設定" : bid);
+
+      let totalPrincipal = 0;
+      let initialMonthly = 0;
+      let maxTermYears = 0;
+      let periods: SimPeriod[] = [];
+
+      const allChartPoints = new Map<number, { principal: number; unpaidInterest: number; total: number }>();
+      const allAnnual = new Map<number, { interest: number; principal: number }>();
+      let totalPaid = 0;
+      let totalExtra = 0;
+      let totalInterest = 0;
+      let finalLumpSum = 0;
+
+      for (const prop of props) {
+        const propPrincipal = (prop.costItems ?? [])
+          .filter(c => (c.paymentType ?? "loan") === "loan")
+          .reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
+
+        if (propPrincipal <= 0) continue;
+
+        totalPrincipal += propPrincipal;
+
+        const propTermYears = parseInt(prop.termYears ?? "35") || 35;
+        const propRate = parseFloat(prop.bankRate ?? "1.075") || 1.075;
+        const propTermMonths = propTermYears * 12;
+        const propBonusSemiAnnual = (prop.bonusRepaymentMan ?? 0) * 10000;
+
+        let parsedChanges = (prop.rateChanges ?? [])
+          .filter(rc => { const y = parseInt(rc.fromYear); return y >= 1 && y <= propTermYears; })
+          .map(rc => ({
+            fromYear: parseInt(rc.fromYear) || 1,
+            rate: parseFloat(rc.rate) || propRate,
+            extra: (parseFloat(rc.extra) || 0) * 10000,
+          }));
+
+        if (parsedChanges.length === 0) {
+          parsedChanges = [{ fromYear: 1, rate: propRate, extra: 0 }];
+        }
+
+        const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual);
+
+        totalPaid += propSim.totalPaid;
+        totalExtra += propSim.totalExtra;
+        totalInterest += propSim.totalInterest;
+        finalLumpSum += propSim.finalLumpSum;
+
+        if (propSim.periods.length > 0) initialMonthly += propSim.periods[0].payment;
+        if (propTermYears > maxTermYears) {
+          maxTermYears = propTermYears;
+          periods = propSim.periods;
+        }
+
+        for (const pt of propSim.chartPoints) {
+          const ex = allChartPoints.get(pt.year) ?? { principal: 0, unpaidInterest: 0, total: 0 };
+          allChartPoints.set(pt.year, {
+            principal: ex.principal + pt.principal,
+            unpaidInterest: ex.unpaidInterest + pt.unpaidInterest,
+            total: ex.total + pt.total,
+          });
+        }
+        for (const ab of propSim.annualBreakdown) {
+          const ex = allAnnual.get(ab.year) ?? { interest: 0, principal: 0 };
+          allAnnual.set(ab.year, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal });
+        }
+      }
+
+      if (totalPrincipal === 0) continue;
+
+      const chartPoints = Array.from(allChartPoints.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([year, v]) => ({ year, ...v }));
+      const annualBreakdown = Array.from(allAnnual.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([year, v]) => ({ year, ...v }));
+
+      const sim: SimResult = { periods, chartPoints, annualBreakdown, finalLumpSum, totalPaid, totalExtra, totalInterest };
+
+      result.push({
+        borrowerId: bid,
+        label,
+        properties: props,
+        totalPrincipal,
+        initialMonthly,
+        maxTermYears,
+        sim,
+        hasCap: periods.some(p => p.capped),
+        hasUnpaid: finalLumpSum > 0,
+      });
+    }
+
+    return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [principal, termMonths, JSON.stringify(parsedRateChanges), bonusSemiAnnual]);
-
-  const scenarioResults = useMemo(() => {
-    if (!principal) return null;
-    return SCENARIOS.map(sc => ({ sc, ...calcLoanTotal(principal, termMonths, rate, sc.hike5, sc.hike10) }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [principal, termMonths, bankRate]);
-
-  // スプレッド = 現在の銀行金利 − 現在の政策金利（契約中は固定）
-  const spread = (parseFloat(bankRate) || 0) - CURRENT_POLICY_RATE;
-
-  const applyScenario = (sc: ScenarioDef) => {
-    const newChanges: RateChange[] = [
-      { id: "base", fromYear: "1", rate: bankRate, extra: "" },
-      ...sc.changes
-        .map((c, i) => ({
-          id: `sc_${i}_${Date.now()}`,
-          fromYear: String(c.calYear - THIS_YEAR + 1),
-          rate: (c.policyRate + spread).toFixed(3),
-          extra: "",
-        }))
-        .filter(rc => {
-          const y = parseInt(rc.fromYear);
-          return y >= 2 && y <= termYearsNum;
-        }),
-    ];
-    setRateChanges(newChanges);
-    setShowScenarioPicker(false);
-  };
-
-  const addRateChange = () => {
-    const sorted = [...rateChanges].sort((a, b) => (parseInt(a.fromYear) || 0) - (parseInt(b.fromYear) || 0));
-    const last = sorted[sorted.length - 1];
-    const lastYear = parseInt(last.fromYear) || 1;
-    const nextYear = Math.min(lastYear + 5, termYearsNum);
-    if (nextYear <= lastYear) return;
-    setRateChanges(prev => [...prev, {
-      id: `rc_${Date.now()}`,
-      fromYear: String(nextYear),
-      rate: last.rate,
-      extra: "",
-    }]);
-  };
-
-  const updateRateChange = (id: string, field: "fromYear" | "rate" | "extra", val: string) => {
-    setRateChanges(prev => prev.map(rc => rc.id === id ? { ...rc, [field]: val } : rc));
-  };
-
-  const removeRateChange = (id: string) => {
-    setRateChanges(prev => prev.filter(rc => rc.id !== id));
-  };
-
-  const sortedRateChanges = useMemo(() =>
-    [...rateChanges].sort((a, b) => (parseInt(a.fromYear) || 9999) - (parseInt(b.fromYear) || 9999)),
-  [rateChanges]);
+  }, [properties, JSON.stringify(borrowerOptions)]);
 
   const monthlyIncome = (parseFloat(monthlyIncomeMan) || 0) * 10000;
-  const hasCap = sim?.periods.some(p => p.capped);
-  const hasUnpaid = (sim?.finalLumpSum ?? 0) > 0;
 
   const burdenColor = (ratio: number) => {
     if (ratio < 25) return "text-green-700 bg-green-50";
     if (ratio < 35) return "text-yellow-700 bg-yellow-50";
     return "text-red-700 bg-red-50";
   };
+
+  const totalPrincipal = drawdowns.reduce((s, d) => s + d.amountMan, 0);
+  const hasSims = borrowerSims.length > 0;
 
   return (
     <div className="space-y-5">
@@ -570,52 +484,24 @@ export default function MortgageCalc() {
               <p className="text-blue-200 text-sm mt-0.5">5年ルール・125%ルール 未払い利息シミュレーション</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={handleSave} disabled={saveStatus === "saving"}
-              className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
-                saveStatus === "saved" ? "border-green-400/60 text-green-300" :
-                saveStatus === "error" ? "border-red-400/60 text-red-300" :
-                saveStatus === "login-required" ? "border-yellow-400/60 text-yellow-300" :
-                "border-white/30 text-blue-200 hover:text-white hover:border-white/60"
-              }`}>
-              <Save size={11} />
-              {saveStatus === "saving" ? "保存中..." :
-               saveStatus === "saved" ? "保存済み" :
-               saveStatus === "error" ? "保存失敗" :
-               saveStatus === "login-required" ? "要ログイン" :
-               "保存"}
-            </button>
-            <button onClick={() => setEditingBank(v => !v)}
-              className="text-xs text-blue-200 hover:text-white border border-white/30 hover:border-white/60 rounded-lg px-3 py-1.5 transition-colors">
-              {editingBank ? "完了" : "銀行を編集"}
-            </button>
-          </div>
+          <button onClick={handleSave} disabled={saveStatus === "saving"}
+            className={`flex items-center gap-1 text-xs border rounded-lg px-3 py-1.5 transition-colors shrink-0 ${
+              saveStatus === "saved" ? "border-green-400/60 text-green-300" :
+              saveStatus === "error" ? "border-red-400/60 text-red-300" :
+              saveStatus === "login-required" ? "border-yellow-400/60 text-yellow-300" :
+              "border-white/30 text-blue-200 hover:text-white hover:border-white/60"
+            }`}>
+            <Save size={11} />
+            {saveStatus === "saving" ? "保存中..." :
+             saveStatus === "saved" ? "保存済み" :
+             saveStatus === "error" ? "保存失敗" :
+             saveStatus === "login-required" ? "要ログイン" :
+             "保存"}
+          </button>
         </div>
-
-        {editingBank ? (
-          <div className="bg-white/20 rounded-xl p-3 mt-4 space-y-2">
-            <input type="text" value={bankName} onChange={e => setBankName(e.target.value)}
-              placeholder="銀行名"
-              className="w-full bg-white/20 rounded-lg px-2 py-1 text-sm text-white placeholder-blue-300 focus:outline-none focus:ring-1 focus:ring-white/60" />
-            <div className="flex items-center gap-1">
-              <input type="number" value={bankRate} step="0.025" onChange={e => setBankRate(e.target.value)}
-                placeholder="1.075"
-                className="w-full bg-white/20 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-white/60" />
-              <span className="text-white text-sm shrink-0">%</span>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white/20 rounded-xl p-4 mt-4 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-blue-200">{bankName || "銀行"}</div>
-              <div className="font-bold text-3xl mt-0.5">{rate}%</div>
-            </div>
-            <div className="text-right text-xs text-blue-300">現在の変動金利</div>
-          </div>
-        )}
       </div>
 
-      {/* Property / contract info — list view */}
+      {/* Property list */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -650,14 +536,18 @@ export default function MortgageCalc() {
                       {borrowerLabel(prop) && (
                         <span className="text-xs bg-blue-50 text-blue-600 font-medium rounded-full px-2 py-0.5 shrink-0">{borrowerLabel(prop)}</span>
                       )}
+                      {prop.bankName && (
+                        <span className="text-xs bg-gray-50 text-gray-500 rounded-full px-2 py-0.5 shrink-0">{prop.bankName}</span>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
                       {loanTotal > 0 && <span className="text-blue-600">ローン {loanTotal.toLocaleString()}万円</span>}
                       {selfTotal > 0 && <span className="text-amber-600">自己資金 {selfTotal.toLocaleString()}万円</span>}
+                      {prop.bankRate && <span>{prop.bankRate}%</span>}
+                      {prop.termYears && <span>{prop.termYears}年</span>}
                       {(prop.bonusRepaymentMan ?? 0) > 0 && (
                         <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年2回</span>
                       )}
-                      <span>{items.length}件</span>
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
                   </div>
@@ -692,29 +582,7 @@ export default function MortgageCalc() {
         />
       )}
 
-      {/* Loan conditions */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">ローン条件</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">返済期間</label>
-            <select value={termYears} onChange={e => setTermYears(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
-              {[20, 25, 30, 35, 40, 45].map(y => <option key={y} value={y}>{y}年</option>)}
-            </select>
-          </div>
-          <div className="flex items-end">
-            {principal > 0 && (
-              <div>
-                <div className="text-xs text-gray-500 mb-1">借入総額（分割実行の合計）</div>
-                <div className="text-sm font-bold text-gray-800">{fmt(principal)}円</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Drawdown schedule — auto-generated from property cost items */}
+      {/* Drawdown schedule */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <div className="flex items-center gap-2">
@@ -767,7 +635,7 @@ export default function MortgageCalc() {
               })()}
             </div>
             <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
-              合計: {drawdowns.reduce((s, d) => s + d.amountMan, 0).toLocaleString()}万円
+              合計: {totalPrincipal.toLocaleString()}万円
               {(() => {
                 const last = [...drawdowns].filter(d => d.date).at(-1);
                 return last ? `　最終支払日: ${last.date}以降に元利均等返済スタート` : null;
@@ -782,422 +650,162 @@ export default function MortgageCalc() {
         )}
       </div>
 
-      {/* BOJ Scenario auto-setup */}
-      {principal > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-5 py-4 text-left"
-            onClick={() => setShowScenarioPicker(v => !v)}
-          >
-            <div className="flex items-center gap-2">
-              <TrendingUp size={16} className="text-blue-500 shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-gray-800">日銀政策金利シナリオから自動設定</div>
-                <div className="text-xs text-gray-400 mt-0.5">将来の金利上昇シナリオを選ぶと金利変更プランに自動入力</div>
-              </div>
-            </div>
-            {showScenarioPicker ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
-          </button>
-
-          {showScenarioPicker && (
-            <div className="border-t border-gray-50 px-5 pb-5 pt-4 space-y-3">
-              {/* Spread explanation */}
-              <div className="text-xs bg-blue-50 border border-blue-100 rounded-xl p-3 text-blue-800 leading-relaxed">
-                <strong>計算の仕組み：</strong><br />
-                変動金利は「政策金利 ＋ スプレッド（{spread >= 0 ? "+" : ""}{spread.toFixed(3)}%）」で決まります。<br />
-                スプレッドは契約時に固定されるため、政策金利が動いた分だけあなたの金利も同じ幅で変動します。
-                <div className="mt-1 text-blue-600 font-mono">
-                  現在: 政策金利 {CURRENT_POLICY_RATE}% ＋ {spread.toFixed(3)}% ＝ {bankRate}%
-                </div>
-              </div>
-
-              {BOJ_SCENARIOS.map(sc => (
-                <div key={sc.id} className={`border rounded-xl p-4 ${sc.accent}`}>
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-800">{sc.label}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{sc.description}</div>
-                    </div>
-                    <button
-                      onClick={() => applyScenario(sc)}
-                      className="shrink-0 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      適用
-                    </button>
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-gray-500">
-                        <th className="text-left py-1 font-medium">時期</th>
-                        <th className="text-center py-1 font-medium">政策金利</th>
-                        <th className="text-right py-1 font-medium">あなたのローン金利</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-gray-700">
-                      <tr>
-                        <td className="py-0.5">現在（{THIS_YEAR}年〜）</td>
-                        <td className="text-center">{CURRENT_POLICY_RATE}%</td>
-                        <td className="text-right font-medium">{bankRate}%</td>
-                      </tr>
-                      {sc.changes.map(c => (
-                        <tr key={c.calYear}>
-                          <td className="py-0.5">{c.calYear}年〜（{c.calYear - THIS_YEAR + 1}年目）</td>
-                          <td className="text-center">{c.policyRate}%</td>
-                          <td className="text-right font-medium text-orange-700">
-                            {(c.policyRate + spread).toFixed(3)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-              <p className="text-xs text-gray-400">
-                出典: 日銀統計 <a href="https://www.boj.or.jp/statistics/index.htm" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">boj.or.jp</a>、予想は三井住友DSアセットマネジメント（2026年）
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Rate change plan */}
-      {principal > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-gray-800">金利変更プラン</h3>
-            <p className="text-xs text-gray-400 mt-0.5">金利が変わる年を自由に追加できます</p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-gray-500 font-medium whitespace-nowrap">開始年</th>
-                  <th className="px-4 py-2.5 text-center text-gray-500 font-medium whitespace-nowrap">適用金利</th>
-                  <th className="px-4 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {/* Base row */}
-                <tr className="bg-blue-50/40">
-                  <td className="px-4 py-3 text-gray-700 font-medium whitespace-nowrap">
-                    1年目〜<span className="ml-1.5 text-blue-500 text-xs">（現在）</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1">
-                      <span className="w-20 text-center text-sm text-gray-400 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1.5">{bankRate}</span>
-                      <span className="text-gray-500">%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3"></td>
-                </tr>
-
-                {/* Additional rate change rows */}
-                {sortedRateChanges.filter(rc => rc.id !== "base").map(rc => {
-                  const beyondTerm = (parseInt(rc.fromYear) || 0) > termYearsNum;
-                  return (
-                    <tr key={rc.id} className={beyondTerm ? "bg-red-50/30 opacity-60" : ""}>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={rc.fromYear}
-                            min={2}
-                            max={termYearsNum}
-                            onChange={e => updateRateChange(rc.id, "fromYear", e.target.value)}
-                            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                          <span className="text-gray-500 whitespace-nowrap">年目〜</span>
-                        </div>
-                        {beyondTerm && <p className="text-xs text-red-400 mt-0.5">返済期間外</p>}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="number"
-                            value={rc.rate}
-                            step="0.025"
-                            onChange={e => updateRateChange(rc.id, "rate", e.target.value)}
-                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                          <span className="text-gray-500">%</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => removeRateChange(rc.id)}
-                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="px-5 py-3 border-t border-gray-50">
-            <button
-              onClick={addRateChange}
-              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
-            >
-              <Plus size={13} />
-              金利変更を追加
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Annual interest/principal breakdown chart — shown right after rate plan */}
-      {principal > 0 && sim && (
+      {/* Monthly income input (for repayment ratio) */}
+      {hasSims && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
-          <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={sim.annualBreakdown} barSize={termYearsNum > 30 ? 6 : 10}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
-                ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-              <Tooltip content={<AnnualBreakdownTooltip />} />
-              <Legend />
-              <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
-              <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-sm font-medium text-gray-700 shrink-0">月収</label>
+            <div className="flex items-center gap-2">
+              <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
+                placeholder="40"
+                className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <span className="text-sm text-gray-500">万円 / 月</span>
+            </div>
+            <span className="text-xs text-gray-400">返済負担率の計算に使用</span>
+          </div>
         </div>
       )}
 
-      {/* Simulation results */}
-      {principal > 0 && sim && (
-        <>
-          {/* Period payment table — collapsible */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <button
-              className="w-full flex items-center justify-between px-5 py-4 text-left"
-              onClick={() => setShow5Year(v => !v)}
-            >
-              <div className="flex items-center gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-800">5年ルール試算結果</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">125%上限を適用した月額返済の推移</p>
-                </div>
-                {hasCap && (
-                  <span className="text-xs bg-red-100 text-red-700 font-medium rounded-full px-2.5 py-1">125%上限あり</span>
-                )}
-              </div>
-              {show5Year ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
-            </button>
-            {show5Year && (
-              <div className="overflow-x-auto border-t border-gray-50">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2.5 text-left text-gray-500 font-medium">期間</th>
-                      <th className="px-4 py-2.5 text-right text-gray-500 font-medium">期首金利</th>
-                      <th className="px-4 py-2.5 text-right text-gray-500 font-medium">月額返済</th>
-                      {monthlyIncome > 0 && <th className="px-4 py-2.5 text-right text-gray-500 font-medium">返済負担率</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {sim.periods.map((p, i) => {
-                      const burdenRatio = monthlyIncome > 0 ? (p.payment / monthlyIncome) * 100 : null;
-                      return (
-                        <tr key={i} className={p.capped ? "bg-red-50" : ""}>
-                          <td className="px-4 py-2.5 text-gray-700">{p.label}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-600">{p.rateAtStart.toFixed(3)}%</td>
-                          <td className="px-4 py-2.5 text-right font-bold">
-                            <span className={p.capped ? "text-red-700" : "text-gray-800"}>
-                              ¥{p.payment.toLocaleString()}
-                              {p.capped && <span className="block text-red-400 font-normal text-xs">（125%上限）</span>}
-                            </span>
-                          </td>
-                          {monthlyIncome > 0 && burdenRatio !== null && (
-                            <td className="px-4 py-2.5 text-right">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${burdenColor(burdenRatio)}`}>
-                                {burdenRatio.toFixed(1)}%
-                              </span>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Balance chart */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3">残高・未払い利息の推移</h4>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={sim.chartPoints}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
-                  ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= termYearsNum)} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-                <Tooltip labelFormatter={l => `${l}年後`} formatter={(v, name) => [fmt(Number(v)), name]} />
-                <Legend />
-                {parsedRateChanges.filter(rc => rc.extra > 0 && rc.fromYear > 1).map((rc, i) =>
-                  <ReferenceLine key={i} x={rc.fromYear - 1} stroke="#3b82f6" strokeDasharray="3 3"
-                    label={{ value: `繰上`, position: "insideTopRight", fontSize: 8, fill: "#3b82f6" }} />
-                )}
-                {parsedRateChanges.filter(rc => rc.fromYear > 1).map((rc, i) =>
-                  <ReferenceLine key={`rate_${i}`} x={rc.fromYear - 1} stroke="#f59e0b" strokeDasharray="2 4"
-                    label={{ value: `${rc.rate.toFixed ? rc.rate.toFixed(2) : rc.rate}%`, position: "insideTopLeft", fontSize: 8, fill: "#92400e" }} />
-                )}
-                <Line dataKey="principal" name="元金残高" stroke="#3b82f6" strokeWidth={2} dot={false} type="monotone" />
-                <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
-                <Line dataKey="total" name="合計残債" stroke="#f59e0b" strokeWidth={1.5} dot={false} type="monotone" strokeDasharray="4 2" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Summary */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs text-gray-500">月額合計</div>
-              <div className="font-bold text-gray-900 text-sm mt-0.5">{fmt(sim.totalPaid)}</div>
-            </div>
-            {sim.totalExtra > 0 && (
-              <div className="bg-blue-50 rounded-xl p-3">
-                <div className="text-xs text-gray-500">繰り上げ返済計</div>
-                <div className="font-bold text-blue-700 text-sm mt-0.5">{fmt(sim.totalExtra)}</div>
-              </div>
-            )}
-            <div className={`rounded-xl p-3 ${hasUnpaid ? "bg-red-50" : "bg-green-50"}`}>
-              <div className="text-xs text-gray-500">期末一括清算額</div>
-              <div className={`font-bold text-sm mt-0.5 ${hasUnpaid ? "text-red-700" : "text-green-700"}`}>
-                {hasUnpaid ? fmt(sim.finalLumpSum) : "なし"}
-              </div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-3">
-              <div className="text-xs text-gray-500">利息総額（期末含む）</div>
-              <div className="font-bold text-orange-700 text-sm mt-0.5">{fmt(sim.totalInterest)}</div>
-            </div>
-          </div>
-
-          {hasUnpaid && (
-            <div className="flex items-start gap-2 bg-red-50 rounded-xl p-4">
-              <AlertTriangle size={13} className="text-red-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-700">
-                現在のプランでは期末に <strong>{fmt(sim.finalLumpSum)}</strong> の残高が残ります。
-                金利を下げるか、繰り上げ返済を増やして未払い利息の膨張を防いでください。
-              </p>
-            </div>
-          )}
-          {!hasUnpaid && (
-            <div className="flex items-start gap-2 bg-green-50 rounded-xl p-4">
-              <Info size={13} className="text-green-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-green-700">
-                このプランでは期末に未払い残高なしで完済できます。
-              </p>
-            </div>
-          )}
-
-          {/* 返済負担率 — always show when sim exists; 月収 input lives here */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3">返済負担率</h4>
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                月収（万円）<span className="ml-1 text-gray-400 font-normal">返済負担率の計算に使用</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input type="number" value={monthlyIncomeMan} onChange={e => setMonthlyIncomeMan(e.target.value)}
-                  placeholder="40"
-                  className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                <span className="text-sm text-gray-500">万円 / 月</span>
-                {monthlyIncomeMan && parseFloat(monthlyIncomeMan) > 0 && (
-                  <span className="text-xs text-gray-400">（年収 {Math.round(parseFloat(monthlyIncomeMan) * 12)}万円）</span>
-                )}
-              </div>
-            </div>
-            {monthlyIncome > 0 && sim.periods.length > 0 && (() => {
-              const maxRatio = Math.max(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
-              const minRatio = Math.min(...sim.periods.map(p => (p.payment / monthlyIncome) * 100));
-              const annualIncome = monthlyIncome * 12;
-              const annualRepayment = sim.periods[0].payment * 12;
-              const annualBurden = (annualRepayment / annualIncome) * 100;
-              return (
-                <>
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <div className="text-xs text-gray-500">初期月額負担率</div>
-                      <div className={`font-bold text-lg mt-0.5 ${minRatio < 25 ? "text-green-700" : minRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                        {minRatio.toFixed(1)}%
+      {/* Per-borrower simulation sections */}
+      {borrowerSims.map(data => {
+        const isExpanded = expandedBorrowers[data.borrowerId] !== false;
+        return (
+          <div key={data.borrowerId} className="space-y-4">
+            {/* Borrower header */}
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-100 p-5">
+              <button
+                className="w-full text-left"
+                onClick={() => setExpandedBorrowers(prev => ({ ...prev, [data.borrowerId]: !isExpanded }))}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-indigo-500 mb-1">{data.label} のローン</div>
+                    <div className="flex items-baseline gap-4 flex-wrap">
+                      <div>
+                        <span className="text-xs text-gray-500">借入総額</span>
+                        <div className="font-bold text-xl text-gray-900">{fmt(data.totalPrincipal)}</div>
                       </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <div className="text-xs text-gray-500">最大月額負担率</div>
-                      <div className={`font-bold text-lg mt-0.5 ${maxRatio < 25 ? "text-green-700" : maxRatio < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                        {maxRatio.toFixed(1)}%
+                      <div>
+                        <span className="text-xs text-gray-500">初期月額返済</span>
+                        <div className="font-bold text-xl text-gray-900">¥{Math.round(data.initialMonthly).toLocaleString()}</div>
                       </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <div className="text-xs text-gray-500">年間返済負担率</div>
-                      <div className={`font-bold text-lg mt-0.5 ${annualBurden < 25 ? "text-green-700" : annualBurden < 35 ? "text-yellow-700" : "text-red-700"}`}>
-                        {annualBurden.toFixed(1)}%
-                      </div>
+                      {monthlyIncome > 0 && data.initialMonthly > 0 && (
+                        <div>
+                          <span className="text-xs text-gray-500">返済負担率</span>
+                          <div className={`inline-flex font-bold text-sm px-2 py-0.5 rounded-lg mt-0.5 ${burdenColor((data.initialMonthly / monthlyIncome) * 100)}`}>
+                            {((data.initialMonthly / monthlyIncome) * 100).toFixed(1)}%
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-xs text-gray-400 space-y-0.5">
-                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mr-1"></span>25%未満：余裕あり</p>
-                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 mr-1"></span>25〜35%：要注意（金融機関の一般的な審査基準上限）</p>
-                    <p><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mr-1"></span>35%超：負担大（家計への影響に注意）</p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-
-          {/* Quick scenario comparison */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <button className="w-full flex items-center justify-between px-5 py-4 text-left"
-              onClick={() => setShowScenarios(v => !v)}>
-              <div className="flex items-center gap-2">
-                <Info size={14} className="text-gray-400 shrink-0" />
-                <span className="text-sm font-semibold text-gray-700">参考: 金利シナリオ別クイック比較</span>
-              </div>
-              {showScenarios ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
-            </button>
-            {showScenarios && scenarioResults && (
-              <div className="border-t border-gray-100">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2.5 text-left text-gray-500 font-medium">シナリオ</th>
-                        <th className="px-4 py-2.5 text-right text-gray-500 font-medium">総支払額</th>
-                        <th className="px-4 py-2.5 text-right text-gray-500 font-medium">うち利息</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {scenarioResults.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-4 py-2.5 text-gray-700">{row.sc.label}</td>
-                          <td className="px-4 py-2.5 text-right font-bold text-blue-700">{fmt(row.totalPaid)}</td>
-                          <td className="px-4 py-2.5 text-right text-red-500">{fmt(row.totalInterest)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {isExpanded ? <ChevronUp size={16} className="text-indigo-400 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-indigo-400 shrink-0 mt-1" />}
                 </div>
-                <p className="text-xs text-gray-400 px-5 py-2.5 border-t border-gray-50">
-                  各フェーズ開始時に残高から月額を再計算（5年ルール未適用の参考値）
-                </p>
-              </div>
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {data.properties.map(p => {
+                    const loanTotal = (p.costItems ?? []).filter(c => (c.paymentType ?? "loan") === "loan").reduce((s, c) => s + c.amountMan, 0);
+                    return (
+                      <span key={p.id} className="text-xs bg-white/70 text-gray-600 rounded-full px-2.5 py-1 border border-white/80">
+                        {p.propertyName}
+                        {loanTotal > 0 ? ` ${loanTotal.toLocaleString()}万円` : ""}
+                        {p.bankRate ? ` / ${p.bankRate}%` : ""}
+                        {p.termYears ? ` / ${p.termYears}年` : ""}
+                      </span>
+                    );
+                  })}
+                </div>
+              </button>
+            </div>
+
+            {isExpanded && (
+              <>
+                {/* Annual breakdown chart */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
+                  <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={data.sim.annualBreakdown} barSize={data.maxTermYears > 30 ? 6 : 10}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                      <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                        ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= data.maxTermYears)} />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
+                      <Tooltip content={<AnnualBreakdownTooltip />} />
+                      <Legend />
+                      <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
+                      <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Balance chart */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3">残高・未払い利息の推移</h4>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={data.sim.chartPoints}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                        ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= data.maxTermYears)} />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
+                      <Tooltip labelFormatter={l => `${l}年後`} formatter={(v, name) => [fmt(Number(v)), name]} />
+                      <Legend />
+                      <Line dataKey="principal" name="元金残高" stroke="#3b82f6" strokeWidth={2} dot={false} type="monotone" />
+                      <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />
+                      <Line dataKey="total" name="合計残債" stroke="#f59e0b" strokeWidth={1.5} dot={false} type="monotone" strokeDasharray="4 2" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Summary tiles */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="text-xs text-gray-500">総返済額（月払合計）</div>
+                    <div className="font-bold text-gray-900 text-sm mt-0.5">{fmt(data.sim.totalPaid)}</div>
+                  </div>
+                  {data.sim.totalExtra > 0 && (
+                    <div className="bg-blue-50 rounded-xl p-3">
+                      <div className="text-xs text-gray-500">繰り上げ返済計</div>
+                      <div className="font-bold text-blue-700 text-sm mt-0.5">{fmt(data.sim.totalExtra)}</div>
+                    </div>
+                  )}
+                  <div className={`rounded-xl p-3 ${data.hasUnpaid ? "bg-red-50" : "bg-green-50"}`}>
+                    <div className="text-xs text-gray-500">期末一括清算額</div>
+                    <div className={`font-bold text-sm mt-0.5 ${data.hasUnpaid ? "text-red-700" : "text-green-700"}`}>
+                      {data.hasUnpaid ? fmt(data.sim.finalLumpSum) : "なし"}
+                    </div>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-3">
+                    <div className="text-xs text-gray-500">利息総額</div>
+                    <div className="font-bold text-orange-700 text-sm mt-0.5">{fmt(data.sim.totalInterest)}</div>
+                  </div>
+                </div>
+
+                {data.hasUnpaid && (
+                  <div className="flex items-start gap-2 bg-red-50 rounded-xl p-4">
+                    <AlertTriangle size={13} className="text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">
+                      現在のプランでは期末に <strong>{fmt(data.sim.finalLumpSum)}</strong> の残高が残ります。
+                      金利を下げるか、繰り上げ返済を増やして未払い利息の膨張を防いでください。
+                    </p>
+                  </div>
+                )}
+                {!data.hasUnpaid && (
+                  <div className="flex items-start gap-2 bg-green-50 rounded-xl p-4">
+                    <Info size={13} className="text-green-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-green-700">
+                      このプランでは期末に未払い残高なしで完済できます。
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
-        </>
-      )}
+        );
+      })}
 
-      {!principal && (
+      {!hasSims && (
         <div className="bg-gray-50 rounded-2xl p-10 text-center text-gray-400">
           <Building2 size={32} className="mx-auto mb-3 text-gray-200" />
-          <p className="text-sm">借入額を入力すると試算結果が表示されます</p>
+          <p className="text-sm">物件を登録するとシミュレーション結果が表示されます</p>
         </div>
       )}
     </div>
