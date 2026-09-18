@@ -127,7 +127,9 @@ export function mortgageMonthlyPaymentWithDrawdown(
   simStartYear: number,
 ): number[] {
   if (!drawdowns.length) return [];
-  const sorted = [...drawdowns].sort((a, b) => a.date.localeCompare(b.date));
+  const valid = drawdowns.filter(d => d.date);
+  if (!valid.length) return [];
+  const sorted = [...valid].sort((a, b) => a.date.localeCompare(b.date));
   const lastDisbYM = sorted[sorted.length - 1].date;
   const lastDisbYear = parseInt(lastDisbYM.split("-")[0]);
   const lastDisbMonth = parseInt(lastDisbYM.split("-")[1]);

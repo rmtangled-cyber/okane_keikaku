@@ -266,7 +266,14 @@ export default function MortgageCalc() {
       setBankName(plan.bankName);
       setBankRate(plan.bankRate);
       if (plan.monthlyIncomeMan) setMonthlyIncomeMan(plan.monthlyIncomeMan);
-      if (plan.drawdownSchedule?.length) setDrawdowns(plan.drawdownSchedule);
+      if (plan.drawdownSchedule?.length) {
+        // 旧データ互換: yearMonth (YYYY-MM) → date (YYYY-MM-DD)
+        setDrawdowns(plan.drawdownSchedule.map(d => {
+          if (d.date) return d;
+          const legacy = (d as unknown as Record<string, unknown>)["yearMonth"] as string | undefined;
+          return { ...d, date: legacy ? `${legacy}-01` : "" };
+        }));
+      }
       if (plan.periodSettings?.length) {
         const loaded: RateChange[] = plan.periodSettings.map((p, i) => ({
           id: `loaded_${i}`,
