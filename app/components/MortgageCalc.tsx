@@ -647,49 +647,32 @@ export default function MortgageCalc() {
         {drawdowns.length > 0 ? (
           <>
             <div className="divide-y divide-gray-50">
-              {(() => {
-                const grouped = new Map<string, typeof drawdowns>();
-                for (const d of drawdowns) {
-                  const key = d.date || "__nodate__";
-                  if (!grouped.has(key)) grouped.set(key, []);
-                  grouped.get(key)!.push(d);
-                }
-                const sortedKeys = [...grouped.keys()].sort((a, b) => {
-                  if (a === "__nodate__") return 1;
-                  if (b === "__nodate__") return -1;
-                  return a.localeCompare(b);
-                });
-                return sortedKeys.map(key => {
-                  const items = grouped.get(key)!;
-                  const total = items.reduce((s, d) => s + d.amountMan, 0);
-                  const date = key === "__nodate__" ? null : key;
-                  return (
-                    <div key={key} className="px-5 py-3.5">
-                      <div className="flex items-baseline justify-between mb-1.5">
-                        <span className="text-sm font-semibold text-gray-700">
-                          {date ?? <span className="text-gray-300">日付未設定</span>}
-                        </span>
-                        <span className="text-sm font-bold text-indigo-700">{total.toLocaleString()}万円</span>
-                      </div>
-                      <ul className="space-y-0.5 pl-1">
-                        {items.map(d => (
-                          <li key={d.id} className="flex items-center justify-between text-xs text-gray-500">
-                            <span>・{d.label}</span>
-                            <span className="text-gray-400 tabular-nums">{d.amountMan.toLocaleString()}万円</span>
-                          </li>
-                        ))}
-                      </ul>
+              {properties.map(prop => {
+                const loanItems = (prop.costItems ?? [])
+                  .filter(c => (c.amountMan || 0) > 0 && (c.paymentType ?? "loan") === "loan")
+                  .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+                if (loanItems.length === 0) return null;
+                const propTotal = loanItems.reduce((s, c) => s + c.amountMan, 0);
+                return (
+                  <div key={prop.id} className="px-5 py-3.5">
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <span className="text-sm font-semibold text-gray-700">{prop.propertyName || "（物件名なし）"}</span>
+                      <span className="text-sm font-bold text-indigo-700">{propTotal.toLocaleString()}万円</span>
                     </div>
-                  );
-                });
-              })()}
+                    <ul className="space-y-0.5 pl-1">
+                      {loanItems.map(item => (
+                        <li key={item.id} className="flex items-center justify-between text-xs text-gray-500">
+                          <span>・{item.name}{item.date ? `（${item.date}）` : ""}</span>
+                          <span className="text-gray-400 tabular-nums">{item.amountMan.toLocaleString()}万円</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
             </div>
             <div className="px-5 py-3 bg-indigo-50/50 border-t border-gray-50 text-xs text-indigo-700">
               合計: {totalPrincipal.toLocaleString()}万円
-              {(() => {
-                const last = [...drawdowns].filter(d => d.date).at(-1);
-                return last ? `　最終支払日: ${last.date}以降に元利均等返済スタート` : null;
-              })()}
             </div>
           </>
         ) : (
