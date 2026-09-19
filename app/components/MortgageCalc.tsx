@@ -6,10 +6,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Plus, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Building2, Info, ChevronDown, ChevronUp, AlertTriangle, Plus, Calendar, Pencil, Trash2, TrendingUp, X } from "lucide-react";
 import { loadMortgageSimPlan, saveMortgageSimPlan, loadMortgageProperties, saveMortgageProperties, loadMortgageProperty, loadUserProfile } from "../../lib/storage";
 import { useAuth } from "../../lib/auth-context";
-import type { DrawdownEntry, MortgageProperty, PropertyCostItem, PropertyRateChange, UserProfile } from "../../lib/types";
+import type { DrawdownEntry, MortgageProperty, PropertyCostItem, PropertyRateChange, RateScenarioEntry, PrepaymentEntry, UserProfile } from "../../lib/types";
 import MortgagePropertyModal, { type BorrowerOption } from "./MortgagePropertyModal";
 
 function calcPayment(principal: number, annualPct: number, months: number): number {
@@ -208,6 +208,9 @@ interface BorrowerSimData {
 export default function MortgageCalc() {
   const { user } = useAuth();
   const [borrowerIncomes, setBorrowerIncomes] = useState<Record<string, string>>({});
+  const [sharedBaseRate, setSharedBaseRate] = useState("2.475");
+  const [rateScenario, setRateScenario] = useState<RateScenarioEntry[]>([]);
+  const [showRateScenario, setShowRateScenario] = useState(false);
   const [properties, setProperties] = useState<MortgageProperty[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
@@ -222,13 +225,17 @@ export default function MortgageCalc() {
     const borrowerId = raw.borrowerId as "self" | "spouse" | undefined;
     const bankName = raw.bankName as string | undefined;
     const bankRate = raw.bankRate as string | undefined;
+    const discountRate = raw.discountRate as string | undefined;
+    const isFixed = raw.isFixed as boolean | undefined;
     const termYears = raw.termYears as string | undefined;
     const rateChanges = raw.rateChanges as PropertyRateChange[] | undefined;
+    const prepayments = raw.prepayments as PrepaymentEntry[] | undefined;
     const bonusRepaymentMan = raw.bonusRepaymentMan as number | undefined;
 
     if (Array.isArray(raw.costItems) && raw.costItems.length > 0) {
       return {
-        id, propertyName, borrowerId, bankName, bankRate, termYears, rateChanges,
+        id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed,
+        termYears, rateChanges, prepayments,
         costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, note, updatedAt,
       };
     }
@@ -245,7 +252,7 @@ export default function MortgageCalc() {
     if (balance > 0) costItems.push({ id: `ci_bal_${id}`, name: "残金決済", date: String(raw.finalSettlementDate ?? ""), amountMan: balance });
     if (misc > 0) costItems.push({ id: `ci_misc_${id}`, name: "諸費用", date: "", amountMan: misc });
 
-    return { id, propertyName, borrowerId, bankName, bankRate, termYears, rateChanges, costItems, bonusRepaymentMan, note, updatedAt };
+    return { id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed, termYears, rateChanges, prepayments, costItems, bonusRepaymentMan, note, updatedAt };
   }
 
   useEffect(() => {
@@ -270,21 +277,25 @@ export default function MortgageCalc() {
       } else if (plan.monthlyIncomeMan) {
         setBorrowerIncomes(prev => ({ ...prev, self: plan.monthlyIncomeMan! }));
       }
+      if (plan.sharedBaseRate) setSharedBaseRate(plan.sharedBaseRate);
+      if (plan.rateScenario) setRateScenario(plan.rateScenario);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
-    if (!user || Object.keys(borrowerIncomes).length === 0) return;
+    if (!user) return;
     saveMortgageSimPlan({
       bankName: "", bankRate: "", principalMan: "0", termYears: "35",
       monthlyIncomeMan: borrowerIncomes["self"] ?? "",
       borrowerIncomes,
       periodSettings: [],
+      sharedBaseRate,
+      rateScenario,
       updatedAt: new Date().toISOString(),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [borrowerIncomes, user]);
+  }, [borrowerIncomes, sharedBaseRate, rateScenario, user]);
 
   const handlePropertySave = (prop: MortgageProperty) => {
     setProperties(prev => {
@@ -395,16 +406,50 @@ export default function MortgageCalc() {
         const propTermMonths = propTermYears * 12;
         const propBonusSemiAnnual = (prop.bonusRepaymentMan ?? 0) * 10000;
 
-        let parsedChanges = (prop.rateChanges ?? [])
-          .filter(rc => { const y = parseInt(rc.fromYear); return y >= 1 && y <= propTermYears; })
-          .map(rc => ({
-            fromYear: parseInt(rc.fromYear) || 1,
-            rate: parseFloat(rc.rate) || propRate,
-            extra: (parseFloat(rc.extra) || 0) * 10000,
-          }));
+        let parsedChanges: { fromYear: number; rate: number; extra: number }[];
+        const hasNewRateModel = prop.isFixed !== undefined || prop.discountRate !== undefined;
 
-        if (parsedChanges.length === 0) {
-          parsedChanges = [{ fromYear: 1, rate: propRate, extra: 0 }];
+        if (hasNewRateModel) {
+          if (prop.isFixed) {
+            const fixedRate = parseFloat(prop.bankRate ?? "1.5");
+            parsedChanges = [{ fromYear: 1, rate: fixedRate, extra: 0 }];
+            for (const pp of (prop.prepayments ?? [])) {
+              const year = parseInt(pp.fromYear) || 1;
+              const ex = (parseFloat(pp.extra) || 0) * 10000;
+              if (ex > 0) parsedChanges.push({ fromYear: year, rate: fixedRate, extra: ex });
+            }
+          } else {
+            const discount = parseFloat(prop.discountRate ?? "1.4");
+            const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
+            const getBase = (year: number) => {
+              let base = parseFloat(sharedBaseRate) || 2.475;
+              for (const rs of sortedScen) {
+                if (parseInt(rs.fromYear) <= year) base = parseFloat(rs.baseRate) || base;
+              }
+              return base;
+            };
+            const changeYears = new Set<number>([1]);
+            sortedScen.forEach(rs => { const y = parseInt(rs.fromYear); if (y > 1) changeYears.add(y); });
+            (prop.prepayments ?? []).forEach(pp => { const y = parseInt(pp.fromYear); if (y >= 1) changeYears.add(y); });
+            parsedChanges = Array.from(changeYears).map(year => ({
+              fromYear: year,
+              rate: Math.max(0, getBase(year) - discount),
+              extra: (prop.prepayments ?? [])
+                .filter(pp => parseInt(pp.fromYear) === year)
+                .reduce((s, pp) => s + (parseFloat(pp.extra) || 0), 0) * 10000,
+            }));
+          }
+        } else {
+          parsedChanges = (prop.rateChanges ?? [])
+            .filter(rc => { const y = parseInt(rc.fromYear); return y >= 1 && y <= propTermYears; })
+            .map(rc => ({
+              fromYear: parseInt(rc.fromYear) || 1,
+              rate: parseFloat(rc.rate) || propRate,
+              extra: (parseFloat(rc.extra) || 0) * 10000,
+            }));
+          if (parsedChanges.length === 0) {
+            parsedChanges = [{ fromYear: 1, rate: propRate, extra: 0 }];
+          }
         }
 
         const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual);
@@ -474,7 +519,7 @@ export default function MortgageCalc() {
 
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, JSON.stringify(borrowerOptions)]);
+  }, [properties, JSON.stringify(borrowerOptions), sharedBaseRate, JSON.stringify(rateScenario)]);
 
   const burdenColor = (ratio: number) => {
     if (ratio < 25) return "text-green-700 bg-green-50";
@@ -540,7 +585,14 @@ export default function MortgageCalc() {
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-400">
                       {loanTotal > 0 && <span className="text-blue-600">ローン {loanTotal.toLocaleString()}万円</span>}
                       {selfTotal > 0 && <span className="text-amber-600">自己資金 {selfTotal.toLocaleString()}万円</span>}
-                      {prop.bankRate && <span>{prop.bankRate}%</span>}
+                      {prop.isFixed && prop.bankRate && <span className="text-gray-500">固定 {prop.bankRate}%</span>}
+                      {!prop.isFixed && prop.discountRate && (
+                        <span className="text-gray-500">
+                          変動 −{prop.discountRate}%優遇
+                          {sharedBaseRate && ` (適用 ${(parseFloat(sharedBaseRate) - parseFloat(prop.discountRate)).toFixed(3)}%)`}
+                        </span>
+                      )}
+                      {!prop.isFixed && !prop.discountRate && prop.bankRate && <span>{prop.bankRate}%</span>}
                       {prop.termYears && <span>{prop.termYears}年</span>}
                       {(prop.bonusRepaymentMan ?? 0) > 0 && (
                         <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年2回</span>
@@ -574,6 +626,7 @@ export default function MortgageCalc() {
         <MortgagePropertyModal
           property={editingProperty}
           borrowerOptions={borrowerOptions}
+          currentBaseRate={sharedBaseRate}
           onSave={handlePropertySave}
           onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
         />
@@ -647,6 +700,109 @@ export default function MortgageCalc() {
         )}
       </div>
 
+      {/* Shared rate scenario */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowRateScenario(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <TrendingUp size={15} className="text-blue-500 shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">金利シナリオ（共通）</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                変動金利物件に適用 · 基準金利 {sharedBaseRate}%
+                {rateScenario.length > 0 && ` · ${rateScenario.length}件の変化シナリオ`}
+              </p>
+            </div>
+          </div>
+          {showRateScenario ? <ChevronUp size={14} className="text-gray-400 shrink-0" /> : <ChevronDown size={14} className="text-gray-400 shrink-0" />}
+        </button>
+
+        {showRateScenario && (
+          <div className="border-t border-gray-50 px-5 py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                現在の基準金利（%）
+                <span className="ml-1.5 font-normal text-gray-400">短プラ連動 現在は 2.475% が一般的</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={sharedBaseRate}
+                  step="0.025"
+                  onChange={e => setSharedBaseRate(e.target.value)}
+                  className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-gray-600 mb-2">
+                金利変化の見通し
+                <span className="ml-1.5 font-normal text-gray-400">将来の基準金利変化をシミュレーション</span>
+              </div>
+              <div className="bg-blue-50/50 rounded-lg px-3 py-2 text-xs text-gray-500 mb-2">
+                1年目〜: <strong className="text-gray-700">{sharedBaseRate}%</strong>（現在）
+              </div>
+              {rateScenario.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {[...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear)).map(rs => (
+                    <div key={rs.id} className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number"
+                          value={rs.fromYear}
+                          min={2}
+                          onChange={e => setRateScenario(prev => prev.map(r => r.id === rs.id ? { ...r, fromYear: e.target.value } : r))}
+                          className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                        <span className="text-xs text-gray-500 whitespace-nowrap">年目〜</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={rs.baseRate}
+                          step="0.025"
+                          onChange={e => setRateScenario(prev => prev.map(r => r.id === rs.id ? { ...r, baseRate: e.target.value } : r))}
+                          className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                        <span className="text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRateScenario(prev => prev.filter(r => r.id !== rs.id))}
+                        className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const last = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear)).at(-1);
+                  const lastYear = parseInt(last?.fromYear ?? "0") || 0;
+                  setRateScenario(prev => [...prev, {
+                    id: `rs_${Date.now()}`,
+                    fromYear: String(Math.max(lastYear + 5, 5)),
+                    baseRate: last?.baseRate ?? sharedBaseRate,
+                  }]);
+                }}
+                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <Plus size={12} />
+                シナリオを追加
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Per-borrower simulation sections */}
       {borrowerSims.map(data => {
         const isExpanded = expandedBorrowers[data.borrowerId] !== false;
@@ -688,11 +844,16 @@ export default function MortgageCalc() {
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {data.properties.map(p => {
                     const loanTotal = (p.costItems ?? []).filter(c => (c.paymentType ?? "loan") === "loan").reduce((s, c) => s + c.amountMan, 0);
+                    const rateLabel = p.isFixed && p.bankRate
+                      ? `固定${p.bankRate}%`
+                      : !p.isFixed && p.discountRate
+                        ? `変動−${p.discountRate}%優遇`
+                        : p.bankRate ? `${p.bankRate}%` : "";
                     return (
                       <span key={p.id} className="text-xs bg-white/70 text-gray-600 rounded-full px-2.5 py-1 border border-white/80">
                         {p.propertyName}
                         {loanTotal > 0 ? ` ${loanTotal.toLocaleString()}万円` : ""}
-                        {p.bankRate ? ` / ${p.bankRate}%` : ""}
+                        {rateLabel ? ` / ${rateLabel}` : ""}
                         {p.termYears ? ` / ${p.termYears}年` : ""}
                       </span>
                     );

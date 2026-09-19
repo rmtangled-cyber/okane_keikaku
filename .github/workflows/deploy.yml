@@ -22,6 +22,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Deploy Firestore Rules
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OKANE_KANRI_538AD }}' > /tmp/sa.json
+          npx firebase deploy --only firestore:rules --project okane-kanri-538ad
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:

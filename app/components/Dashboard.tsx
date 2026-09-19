@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye,
 } from "lucide-react";
 
 import {
@@ -326,7 +326,7 @@ function simulate(
 }
 
 export default function Dashboard() {
-  const { user, loading: authLoading, signIn, signOut } = useAuth();
+  const { user, loading: authLoading, viewerOwnerUid, viewerDisplayName, signIn, signOut } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stocks, setStocks] = useState<StockHolding[]>([]);
   const [funds, setFunds] = useState<FundHolding[]>([]);
@@ -397,7 +397,7 @@ export default function Dashboard() {
     loadFunds().then(loaded => {
       const { funds: withContrib, changed } = applyMonthlyContributions(loaded);
       setFunds(withContrib);
-      if (changed) saveFunds(withContrib);
+      if (changed && !viewerOwnerUid) saveFunds(withContrib);
     });
     loadGoals().then(setGoals);
     loadSnapshots().then(setSnapshots);
@@ -412,7 +412,7 @@ export default function Dashboard() {
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
     loadPropertyTaxEntries().then(setPropertyTaxEntries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]);
+  }, [user, authLoading, viewerOwnerUid]);
 
   const handleClearAllData = useCallback(async () => {
     if (!confirm("すべてのデータを削除します。この操作は元に戻せません。続けますか？")) return;
@@ -760,6 +760,7 @@ export default function Dashboard() {
 
   // ── Tab add button ────────────────────────────────────
   function renderAddButton() {
+    if (viewerOwnerUid) return null;
     switch (tab) {
       case "株式":
         return <button onClick={() => { setEditingStock(null); setShowStockModal(true); }}
@@ -897,6 +898,15 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        {/* Viewer mode banner */}
+        {viewerOwnerUid && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-amber-800">
+            <Eye size={16} className="text-amber-500 shrink-0" />
+            <span>
+              <span className="font-medium">{viewerDisplayName ?? "オーナー"}さん</span>のデータを閲覧中です（編集不可）
+            </span>
+          </div>
+        )}
         {/* Total Banner */}
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
           <p className="text-sm text-blue-200 mb-1">総資産</p>
@@ -1308,6 +1318,7 @@ export default function Dashboard() {
           <UserProfileTab
             profile={userProfile}
             onSave={async (p) => { setUserProfile(p); await saveUserProfile(p); }}
+            isViewer={!!viewerOwnerUid}
           />
         )}
 

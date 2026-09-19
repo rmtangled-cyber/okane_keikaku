@@ -6,6 +6,14 @@ import {
 import { db, auth } from "./firebase";
 import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry } from "./types";
 
+// ── Viewer mode state ─────────────────────────────────────────────────────────
+
+let _viewerOwnerUid: string | null = null;
+
+export function setViewerOwnerUid(uid: string | null) { _viewerOwnerUid = uid; }
+export function isViewerMode(): boolean { return _viewerOwnerUid !== null; }
+function currentDataUid(): string { return _viewerOwnerUid ?? auth.currentUser?.uid ?? "no-user"; }
+
 // ── Firestore helpers ─────────────────────────────────────────────────────────
 
 // Firestore rejects undefined field values — strip them before writing
@@ -14,13 +22,13 @@ function stripUndefined<T>(obj: T): T {
 }
 
 function userCol(name: string) {
-  const uid = auth.currentUser?.uid ?? "no-user";
-  if (uid === "no-user") console.warn(`[storage] userCol("${name}"): auth.currentUser is null`);
+  const uid = currentDataUid();
+  if (uid === "no-user") console.warn(`[storage] userCol("${name}"): no user`);
   return collection(db, "users", uid, name);
 }
 
 async function fsGetAll<T>(name: string): Promise<T[]> {
-  const uid = auth.currentUser?.uid ?? "no-user";
+  const uid = currentDataUid();
   console.log(`[storage] fsGetAll("${name}") uid=${uid}`);
   const snap = await getDocs(userCol(name));
   console.log(`[storage] fsGetAll("${name}") → ${snap.docs.length} docs`);
@@ -28,6 +36,7 @@ async function fsGetAll<T>(name: string): Promise<T[]> {
 }
 
 async function fsSaveAll<T extends { id?: string; month?: string }>(name: string, items: T[]): Promise<void> {
+  if (isViewerMode()) return;
   const col = userCol(name);
   const batch = writeBatch(db);
   const snap = await getDocs(col);
@@ -129,7 +138,8 @@ export async function loadIncomeProfiles(): Promise<IncomeProfile[]> {
   return ls;
 }
 export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void> {
-  const uid = auth.currentUser?.uid ?? "no-user";
+  if (isViewerMode()) return;
+  const uid = currentDataUid();
   console.log(`[storage] upsertIncomeProfile id=${profile.id} uid=${uid}`);
   await setDoc(doc(userCol("incomeProfiles"), profile.id), stripUndefined(profile));
   console.log("[storage] upsertIncomeProfile: setDoc done");
@@ -139,6 +149,7 @@ export async function upsertIncomeProfile(profile: IncomeProfile): Promise<void>
   lsSaveIncome(current);
 }
 export async function deleteIncomeProfileById(id: string): Promise<void> {
+  if (isViewerMode()) return;
   await deleteDoc(doc(userCol("incomeProfiles"), id));
   lsSaveIncome(lsLoadIncome().filter(p => p.id !== id));
 }
@@ -189,12 +200,13 @@ export async function loadPropertyTaxEntries(): Promise<PropertyTaxEntry[]> {
 
 // Mortgage Simulation Plan (single doc per user)
 export async function saveMortgageSimPlan(plan: MortgageSimPlan): Promise<void> {
-  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
+  if (isViewerMode()) return;
+  const ref = doc(db, "users", currentDataUid(), "mortgageSimPlan", "default");
   await setDoc(ref, stripUndefined(plan));
 }
 export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
   try {
-    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageSimPlan", "default");
+    const ref = doc(db, "users", currentDataUid(), "mortgageSimPlan", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageSimPlan) : null;
   } catch { return null; }
@@ -202,12 +214,13 @@ export async function loadMortgageSimPlan(): Promise<MortgageSimPlan | null> {
 
 // Mortgage Property Info (single doc per user — kept for migration reads)
 export async function saveMortgageProperty(prop: MortgageProperty): Promise<void> {
-  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageProperty", "default");
+  if (isViewerMode()) return;
+  const ref = doc(db, "users", currentDataUid(), "mortgageProperty", "default");
   await setDoc(ref, stripUndefined(prop));
 }
 export async function loadMortgageProperty(): Promise<MortgageProperty | null> {
   try {
-    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "mortgageProperty", "default");
+    const ref = doc(db, "users", currentDataUid(), "mortgageProperty", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as MortgageProperty) : null;
   } catch { return null; }
@@ -223,14 +236,62 @@ export async function loadMortgageProperties(): Promise<MortgageProperty[]> {
 
 // User Profile (single doc per user)
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "userProfile", "default");
+  if (isViewerMode()) return;
+  const ref = doc(db, "users", currentDataUid(), "userProfile", "default");
   await setDoc(ref, stripUndefined(profile));
 }
 export async function loadUserProfile(): Promise<UserProfile | null> {
   try {
-    const ref = doc(db, "users", (auth.currentUser?.uid ?? "no-user"), "userProfile", "default");
+    const ref = doc(db, "users", currentDataUid(), "userProfile", "default");
     const snap = await getDoc(ref);
     return snap.exists() ? (snap.data() as UserProfile) : null;
+  } catch { return null; }
+}
+
+// ── Viewer management ─────────────────────────────────────────────────────────
+
+export async function lookupOwnerByViewerEmail(email: string): Promise<string | null> {
+  try {
+    const snap = await getDoc(doc(db, "viewerIndex", email));
+    return snap.exists() ? (snap.data() as { ownerUid: string }).ownerUid : null;
+  } catch { return null; }
+}
+
+export async function loadViewerEmails(): Promise<string[]> {
+  const ownerUid = auth.currentUser?.uid;
+  if (!ownerUid) return [];
+  try {
+    const snap = await getDoc(doc(db, "users", ownerUid, "viewerEmails", "default"));
+    return snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
+  } catch { return []; }
+}
+
+export async function addViewerEmail(viewerEmail: string): Promise<void> {
+  const ownerUid = auth.currentUser?.uid;
+  if (!ownerUid || isViewerMode()) return;
+  const emailsRef = doc(db, "users", ownerUid, "viewerEmails", "default");
+  const snap = await getDoc(emailsRef);
+  const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
+  if (!current.includes(viewerEmail)) {
+    await setDoc(emailsRef, { emails: [...current, viewerEmail] });
+  }
+  await setDoc(doc(db, "viewerIndex", viewerEmail), { ownerUid });
+}
+
+export async function removeViewerEmail(viewerEmail: string): Promise<void> {
+  const ownerUid = auth.currentUser?.uid;
+  if (!ownerUid || isViewerMode()) return;
+  const emailsRef = doc(db, "users", ownerUid, "viewerEmails", "default");
+  const snap = await getDoc(emailsRef);
+  const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
+  await setDoc(emailsRef, { emails: current.filter(e => e !== viewerEmail) });
+  await deleteDoc(doc(db, "viewerIndex", viewerEmail));
+}
+
+export async function loadOwnerDisplayName(ownerUid: string): Promise<string | null> {
+  try {
+    const snap = await getDoc(doc(db, "users", ownerUid, "userProfile", "default"));
+    return snap.exists() ? ((snap.data() as { displayName?: string }).displayName ?? null) : null;
   } catch { return null; }
 }
 

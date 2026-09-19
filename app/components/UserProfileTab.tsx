@@ -4,13 +4,15 @@ import { useState, useEffect } from "react";
 import { UserProfile, FamilyMember } from "@/lib/types";
 import { PREFECTURES } from "@/lib/taxCalc";
 import { Plus, Trash2 } from "lucide-react";
+import ViewerInvitePanel from "./ViewerInvitePanel";
 
 interface Props {
   profile: UserProfile | null;
   onSave: (p: UserProfile) => void;
+  isViewer?: boolean;
 }
 
-export default function UserProfileTab({ profile, onSave }: Props) {
+export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
   const currentYear = new Date().getFullYear();
 
   const [displayName, setDisplayName] = useState("");
@@ -81,6 +83,7 @@ export default function UserProfileTab({ profile, onSave }: Props) {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+
         <h2 className="text-base font-semibold text-gray-900 mb-5">プロフィール設定</h2>
         <form onSubmit={handleSave} className="flex flex-col gap-5">
 
@@ -242,6 +245,7 @@ export default function UserProfileTab({ profile, onSave }: Props) {
           </div>
         </form>
       </div>
+      {!isViewer && <ViewerInvitePanel />}
     </div>
   );
 }
