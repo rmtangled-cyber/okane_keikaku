@@ -16,7 +16,8 @@ import {
   Asset, AssetCategory, Goal, StockHolding, FundHolding,
   MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan,
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
-  MortgageSimPlan, UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
+  MortgageSimPlan, MortgageProperty, RateScenarioEntry,
+  UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
 } from "@/lib/types";
 import { applyMonthlyContributions } from "@/lib/autoContrib";
 import {
@@ -33,6 +34,7 @@ import {
   getSpendingRecords, saveSpendingRecords, loadSpendingRecords,
   getLoanPlans, saveLoanPlans, loadLoanPlans,
   loadMortgageSimPlan,
+  loadMortgageProperties,
   saveUserProfile, loadUserProfile,
   savePropertyTaxEntries, loadPropertyTaxEntries,
   clearAllUserData,
@@ -180,6 +182,81 @@ function LifePlanTooltip({ active, payload, label }: { active?: boolean; payload
   );
 }
 
+function buildPropPeriodSettings(
+  prop: MortgageProperty,
+  sharedBaseRate: number,
+  rateScenario: RateScenarioEntry[],
+): { fromYear?: number; rate: string; extra: string }[] {
+  const hasNewRateModel = prop.isFixed !== undefined || prop.discountRate !== undefined;
+  if (!hasNewRateModel) {
+    const propRate = parseFloat(prop.bankRate ?? "1.075") || 1.075;
+    const changes = (prop.rateChanges ?? [])
+      .filter(rc => parseInt(rc.fromYear) >= 1)
+      .map(rc => ({ fromYear: parseInt(rc.fromYear), rate: rc.rate, extra: rc.extra ?? "0" }));
+    return changes.length > 0 ? changes : [{ rate: String(propRate), extra: "0" }];
+  }
+  if (prop.isFixed) {
+    const fixedRate = parseFloat(prop.bankRate ?? "1.5") || 1.5;
+    const settings: { fromYear?: number; rate: string; extra: string }[] = [
+      { fromYear: 1, rate: String(fixedRate), extra: "0" },
+    ];
+    for (const pp of (prop.prepayments ?? [])) {
+      const year = parseInt(pp.fromYear) || 1;
+      const ex = parseFloat(pp.extra) || 0;
+      if (ex > 0) settings.push({ fromYear: year, rate: String(fixedRate), extra: String(ex) });
+    }
+    return settings;
+  }
+  const discount = parseFloat(prop.discountRate ?? "1.4") || 1.4;
+  const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
+  const getBase = (year: number) => {
+    let base = sharedBaseRate;
+    for (const rs of sortedScen) {
+      if (parseInt(rs.fromYear) <= year) base = parseFloat(rs.baseRate) || base;
+    }
+    return base;
+  };
+  const changeYears = new Set<number>([1]);
+  sortedScen.forEach(rs => { const y = parseInt(rs.fromYear); if (y > 1) changeYears.add(y); });
+  (prop.prepayments ?? []).forEach(pp => { const y = parseInt(pp.fromYear); if (y >= 1) changeYears.add(y); });
+  return Array.from(changeYears).map(year => ({
+    fromYear: year,
+    rate: String(Math.max(0, getBase(year) - discount)),
+    extra: String((prop.prepayments ?? [])
+      .filter(pp => parseInt(pp.fromYear) === year)
+      .reduce((s, pp) => s + (parseFloat(pp.extra) || 0), 0)),
+  }));
+}
+
+function calcMortgagePaymentForSimYear(
+  props: MortgageProperty[],
+  simStartYear: number,
+  simYearIndex: number,
+  sharedBaseRate: number,
+  rateScenario: RateScenarioEntry[],
+): number {
+  let total = 0;
+  for (const prop of props) {
+    const principal = (prop.costItems ?? [])
+      .filter(c => (c.paymentType ?? "loan") === "loan")
+      .reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
+    if (principal <= 0) continue;
+    const termYears = parseInt(prop.termYears ?? "35") || 35;
+    const lastDate = (prop.costItems ?? [])
+      .filter(c => (c.paymentType ?? "loan") === "loan" && c.date)
+      .map(c => c.date!)
+      .sort()
+      .at(-1);
+    const loanStartYear = lastDate ? parseInt(lastDate.slice(0, 4)) : simStartYear;
+    const loanYearIndex = simYearIndex - (loanStartYear - simStartYear);
+    if (loanYearIndex < 0 || loanYearIndex >= termYears) continue;
+    const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario);
+    const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings);
+    total += paymentsByYear[loanYearIndex] ?? 0;
+  }
+  return total;
+}
+
 function simulate(
   startAssets: number,
   profiles: IncomeProfile[],
@@ -194,6 +271,9 @@ function simulate(
   propertyTaxEntries?: PropertyTaxEntry[],
   inflationRate?: number,
   funds?: FundHolding[],
+  mortgageProperties?: MortgageProperty[],
+  simSharedBaseRate?: number,
+  simRateScenario?: RateScenarioEntry[],
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -264,8 +344,10 @@ function simulate(
       l.principal, l.annualRate, l.termMonths, l.loanType, l.startDate, year
     ), 0);
 
-    // Mortgage sim payment (applies from startYear for mortgageTermYears)
-    const mortgagePayment = i < mortgageTermYears ? (mortgagePaymentByYear[i] ?? 0) : 0;
+    // Mortgage payment: per-property if available, otherwise legacy mortgageSimPlan
+    const mortgagePayment = (mortgageProperties && mortgageProperties.length > 0)
+      ? calcMortgagePaymentForSimYear(mortgageProperties, startYear, i, simSharedBaseRate ?? 2.475, simRateScenario ?? [])
+      : (i < mortgageTermYears ? (mortgagePaymentByYear[i] ?? 0) : 0);
 
     // Life events cumulative monthly（endYearがある場合はその年まで）
     const cumulativeMonthly = lifeEvents
@@ -303,7 +385,7 @@ function simulate(
     if (insuranceTotal > 0) expenseItems.push({ label: "保険料", monthly: insuranceTotal });
     if (loanTotal > 0) expenseItems.push({ label: "ローン返済", monthly: loanTotal });
     if (fundMonthly > 0) expenseItems.push({ label: "投資信託積立", monthly: fundMonthly });
-    if (mortgagePayment > 0) expenseItems.push({ label: mortgageSimPlan?.bankName ? `${mortgageSimPlan.bankName}住宅ローン` : "住宅ローン", monthly: mortgagePayment });
+    if (mortgagePayment > 0) expenseItems.push({ label: "住宅ローン", monthly: mortgagePayment });
     if (propTaxAnnual > 0) expenseItems.push({ label: "固定資産税", monthly: propTaxAnnual / 12 });
     // 継続的支出増のライフイベントを個別に展開
     lifeEvents
@@ -340,6 +422,7 @@ export default function Dashboard() {
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
+  const [mortgageProperties, setMortgageProperties] = useState<MortgageProperty[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [propertyTaxEntries, setPropertyTaxEntries] = useState<PropertyTaxEntry[]>([]);
   const [showPropertyTaxModal, setShowPropertyTaxModal] = useState(false);
@@ -409,6 +492,7 @@ export default function Dashboard() {
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
+    loadMortgageProperties().then(setMortgageProperties);
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
     loadPropertyTaxEntries().then(setPropertyTaxEntries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -455,6 +539,11 @@ export default function Dashboard() {
   }, 0);
   // 住宅ローンシミュレーターの今月返済額（現在年の月額）
   const mortgageMonthlyNow = useMemo(() => {
+    if (mortgageProperties.length > 0) {
+      const baseRate = parseFloat(mortgageSimPlan?.sharedBaseRate ?? "2.475") || 2.475;
+      const rateScen = mortgageSimPlan?.rateScenario ?? [];
+      return calcMortgagePaymentForSimYear(mortgageProperties, currentYear, 0, baseRate, rateScen);
+    }
     if (!mortgageSimPlan) return 0;
     const termYears = parseInt(mortgageSimPlan.termYears) || 0;
     if (termYears <= 0) return 0;
@@ -475,7 +564,7 @@ export default function Dashboard() {
     }
     const rate = parseFloat(mortgageSimPlan.bankRate) || 0;
     return calcEqualPayment(principal, rate, termYears * 12);
-  }, [mortgageSimPlan, currentYear]);
+  }, [mortgageProperties, mortgageSimPlan, currentYear]);
 
   const totalExpenses = fixedExpenses + variableExpenses + insurancePremiums + loanPaymentsTotal + mortgageMonthlyNow;
   const monthlySavings = monthlyTakeHome - totalExpenses;
@@ -534,6 +623,9 @@ export default function Dashboard() {
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
     lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
     propertyTaxEntries, inflationRate, funds,
+    mortgageProperties,
+    parseFloat(mortgageSimPlan?.sharedBaseRate ?? "2.475") || 2.475,
+    mortgageSimPlan?.rateScenario ?? [],
   );
 
   // ── CRUD callbacks ────────────────────────────────────
