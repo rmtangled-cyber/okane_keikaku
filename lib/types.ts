@@ -204,15 +204,30 @@ export interface PropertyRateChange {
   extra: string; // 繰り上げ返済額（万円）
 }
 
+export interface PrepaymentEntry {
+  id: string;
+  fromYear: string;
+  extra: string; // 万円
+}
+
+export interface RateScenarioEntry {
+  id: string;
+  fromYear: string;
+  baseRate: string; // % e.g. "2.475"
+}
+
 // 物件・契約情報
 export interface MortgageProperty {
   id: string;
   propertyName: string;
   borrowerId?: "self" | "spouse"; // 借入名義人
   bankName?: string;    // 金融機関名
-  bankRate?: string;    // 借入金利（%）
+  bankRate?: string;    // 固定金利（%）or レガシー変動金利
+  discountRate?: string; // 優遇幅（%）変動金利物件
+  isFixed?: boolean;     // true=固定金利, false/undefined=変動金利
   termYears?: string;   // 返済期間（年）
-  rateChanges?: PropertyRateChange[]; // 金利変更プラン
+  rateChanges?: PropertyRateChange[]; // レガシー金利変更プラン
+  prepayments?: PrepaymentEntry[];    // 繰り上げ返済プラン
   costItems: PropertyCostItem[];
   bonusRepaymentMan?: number; // ボーナス返済額（万円/回、年2回）
   note?: string;
@@ -228,6 +243,8 @@ export interface MortgageSimPlan {
   borrowerIncomes?: Record<string, string>;
   periodSettings: { fromYear?: number; rate: string; extra: string }[];
   drawdownSchedule?: DrawdownEntry[];
+  sharedBaseRate?: string;
+  rateScenario?: RateScenarioEntry[];
   updatedAt: string;
 }
 

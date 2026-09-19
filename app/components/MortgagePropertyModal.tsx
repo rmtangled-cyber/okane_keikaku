@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
-import type { MortgageProperty, PropertyCostItem, PropertyRateChange } from "../../lib/types";
+import type { MortgageProperty, PropertyCostItem, PrepaymentEntry } from "../../lib/types";
 
 export interface BorrowerOption {
   id: "self" | "spouse";
@@ -12,15 +12,18 @@ export interface BorrowerOption {
 interface Props {
   property?: MortgageProperty | null;
   borrowerOptions?: BorrowerOption[];
+  currentBaseRate?: string;
   onSave: (p: MortgageProperty) => void;
   onClose: () => void;
 }
 
-export default function MortgagePropertyModal({ property, borrowerOptions, onSave, onClose }: Props) {
+export default function MortgagePropertyModal({ property, borrowerOptions, currentBaseRate, onSave, onClose }: Props) {
   const [propertyName, setPropertyName] = useState(property?.propertyName ?? "");
   const [borrowerId, setBorrowerId] = useState<"self" | "spouse" | "">(property?.borrowerId ?? "self");
   const [bankName, setBankName] = useState(property?.bankName ?? "");
-  const [bankRate, setBankRate] = useState(property?.bankRate ?? "1.075");
+  const [isFixed, setIsFixed] = useState(property?.isFixed ?? false);
+  const [discountRate, setDiscountRate] = useState(property?.discountRate ?? "1.4");
+  const [bankRate, setBankRate] = useState(property?.bankRate ?? "1.5");
   const [termYears, setTermYears] = useState(property?.termYears ?? "35");
   const [note, setNote] = useState(property?.note ?? "");
   const [bonusRepaymentMan, setBonusRepaymentMan] = useState(
@@ -31,17 +34,10 @@ export default function MortgagePropertyModal({ property, borrowerOptions, onSav
       ? property.costItems
       : [{ id: `ci_${Date.now()}`, name: "", date: "", amountMan: 0 }]
   );
-  const [propRateChanges, setPropRateChanges] = useState<PropertyRateChange[]>(
-    property?.rateChanges?.length
-      ? property.rateChanges
-      : [{ id: "base", fromYear: "1", rate: property?.bankRate ?? "1.075", extra: "" }]
+  const [prepayments, setPrepayments] = useState<PrepaymentEntry[]>(
+    property?.prepayments ?? []
   );
-  const [showRatePlan, setShowRatePlan] = useState(false);
-
-  function handleBankRateChange(val: string) {
-    setBankRate(val);
-    setPropRateChanges(prev => prev.map(rc => rc.id === "base" ? { ...rc, rate: val } : rc));
-  }
+  const [showPrepayPlan, setShowPrepayPlan] = useState(false);
 
   function addCostItem() {
     setCostItems(prev => [...prev, { id: `ci_${Date.now()}`, name: "", date: "", amountMan: 0 }]);
@@ -55,42 +51,38 @@ export default function MortgagePropertyModal({ property, borrowerOptions, onSav
     setCostItems(prev => prev.filter(c => c.id !== id));
   }
 
-  function addRateChange() {
-    const sorted = [...propRateChanges].sort((a, b) => (parseInt(a.fromYear) || 0) - (parseInt(b.fromYear) || 0));
-    const last = sorted[sorted.length - 1];
-    const lastYear = parseInt(last.fromYear) || 1;
-    const term = parseInt(termYears) || 35;
-    const nextYear = Math.min(lastYear + 5, term);
-    if (nextYear <= lastYear) return;
-    setPropRateChanges(prev => [...prev, {
-      id: `rc_${Date.now()}`,
-      fromYear: String(nextYear),
-      rate: last.rate,
-      extra: "",
-    }]);
+  function addPrepayment() {
+    const last = prepayments[prepayments.length - 1];
+    const lastYear = parseInt(last?.fromYear ?? "0") || 0;
+    const nextYear = Math.max(lastYear + 5, 5);
+    setPrepayments(prev => [...prev, { id: `pp_${Date.now()}`, fromYear: String(nextYear), extra: "" }]);
   }
 
-  function updateRateChange(id: string, field: keyof PropertyRateChange, val: string) {
-    setPropRateChanges(prev => prev.map(rc => rc.id === id ? { ...rc, [field]: val } : rc));
+  function updatePrepayment(id: string, field: keyof PrepaymentEntry, val: string) {
+    setPrepayments(prev => prev.map(pp => pp.id === id ? { ...pp, [field]: val } : pp));
   }
 
-  function removeRateChange(id: string) {
-    setPropRateChanges(prev => prev.filter(rc => rc.id !== id));
+  function removePrepayment(id: string) {
+    setPrepayments(prev => prev.filter(pp => pp.id !== id));
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!propertyName.trim()) return;
     const validItems = costItems.filter(c => c.name.trim() && c.amountMan > 0);
+    const validPrepayments = prepayments.filter(pp => parseFloat(pp.extra) > 0 && parseInt(pp.fromYear) >= 1);
     const bonus = parseFloat(bonusRepaymentMan);
     onSave({
       id: property?.id ?? `prop_${Date.now()}`,
       propertyName: propertyName.trim(),
       borrowerId: borrowerId || undefined,
       bankName: bankName.trim() || undefined,
-      bankRate: bankRate || undefined,
+      bankRate: isFixed ? (bankRate || undefined) : undefined,
+      discountRate: !isFixed ? (discountRate || undefined) : undefined,
+      isFixed: isFixed || undefined,
       termYears: termYears || undefined,
-      rateChanges: propRateChanges,
+      rateChanges: undefined,
+      prepayments: validPrepayments.length > 0 ? validPrepayments : undefined,
       costItems: validItems,
       bonusRepaymentMan: bonus > 0 ? bonus : undefined,
       note: note || undefined,
@@ -100,8 +92,11 @@ export default function MortgagePropertyModal({ property, borrowerOptions, onSav
 
   const totalMan = costItems.reduce((s, c) => s + (Number(c.amountMan) || 0), 0);
   const termYearsNum = parseInt(termYears) || 35;
-  const sortedRateChanges = [...propRateChanges].sort((a, b) => (parseInt(a.fromYear) || 0) - (parseInt(b.fromYear) || 0));
   const inputCls = "border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const computedRate = !isFixed && currentBaseRate && discountRate
+    ? (parseFloat(currentBaseRate) - parseFloat(discountRate))
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -165,21 +160,67 @@ export default function MortgagePropertyModal({ property, borrowerOptions, onSav
                 placeholder="金融機関名（例: 千葉銀行）"
                 className={`w-full ${inputCls}`}
               />
+
+              {/* 変動/固定トグル */}
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsFixed(false)}
+                  className={`flex-1 px-3 py-2 transition-colors border-r border-gray-200 ${
+                    !isFixed ? "bg-blue-600 text-white font-medium" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  変動金利
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFixed(true)}
+                  className={`flex-1 px-3 py-2 transition-colors ${
+                    isFixed ? "bg-blue-600 text-white font-medium" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  固定金利
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">借入金利（%）</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={bankRate}
-                      step="0.025"
-                      onChange={e => handleBankRateChange(e.target.value)}
-                      placeholder="1.075"
-                      className={`flex-1 text-right ${inputCls}`}
-                    />
-                    <span className="text-xs text-gray-500">%</span>
+                {!isFixed ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">優遇幅（%）</label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">−</span>
+                      <input
+                        type="number"
+                        value={discountRate}
+                        step="0.025"
+                        onChange={e => setDiscountRate(e.target.value)}
+                        placeholder="1.4"
+                        className={`flex-1 text-right ${inputCls}`}
+                      />
+                      <span className="text-xs text-gray-500">%</span>
+                    </div>
+                    {computedRate !== null && computedRate > 0 && (
+                      <div className="mt-1 text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
+                        現在の適用金利: <strong>{computedRate.toFixed(3)}%</strong>
+                      </div>
+                    )}
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">固定金利（%）</label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={bankRate}
+                        step="0.025"
+                        onChange={e => setBankRate(e.target.value)}
+                        placeholder="1.5"
+                        className={`flex-1 text-right ${inputCls}`}
+                      />
+                      <span className="text-xs text-gray-500">%</span>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">返済期間</label>
                   <select
@@ -299,69 +340,72 @@ export default function MortgagePropertyModal({ property, borrowerOptions, onSav
             </div>
           </div>
 
-          {/* 金利変更プラン */}
+          {/* 繰り上げ返済プラン */}
           <div className="border border-gray-100 rounded-xl overflow-hidden">
             <button
               type="button"
-              onClick={() => setShowRatePlan(v => !v)}
+              onClick={() => setShowPrepayPlan(v => !v)}
               className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
             >
-              <span className="text-xs font-medium text-gray-600">金利変更プラン（任意）</span>
-              {showRatePlan ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+              <span className="text-xs font-medium text-gray-600">
+                繰り上げ返済プラン（任意）
+                {prepayments.length > 0 && (
+                  <span className="ml-2 text-blue-500">{prepayments.length}件</span>
+                )}
+              </span>
+              {showPrepayPlan ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
             </button>
-            {showRatePlan && (
+            {showPrepayPlan && (
               <div className="border-t border-gray-100 px-4 pb-4 pt-3">
-                <p className="text-xs text-gray-400 mb-3">金利が変わる年を追加できます</p>
-                <div className="space-y-2">
-                  {/* Base row */}
-                  <div className="flex items-center gap-3 text-xs bg-blue-50/50 rounded-lg px-3 py-2">
-                    <span className="w-24 text-gray-700 font-medium shrink-0">1年目〜</span>
-                    <span className="text-gray-500">{bankRate}%（基本金利）</span>
+                <p className="text-xs text-gray-400 mb-3">繰り上げ返済を行う年と金額を設定できます</p>
+                {prepayments.length > 0 && (
+                  <div className="space-y-2 mb-2">
+                    {prepayments.map(pp => {
+                      const beyondTerm = (parseInt(pp.fromYear) || 0) > termYearsNum;
+                      return (
+                        <div key={pp.id} className={`flex items-center gap-2 ${beyondTerm ? "opacity-50" : ""}`}>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              type="number"
+                              value={pp.fromYear}
+                              min={1}
+                              max={termYearsNum}
+                              onChange={e => updatePrepayment(pp.id, "fromYear", e.target.value)}
+                              className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                            <span className="text-xs text-gray-500 whitespace-nowrap">年目</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={pp.extra}
+                              min={0}
+                              step="10"
+                              onChange={e => updatePrepayment(pp.id, "extra", e.target.value)}
+                              placeholder="100"
+                              className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                            <span className="text-xs text-gray-500">万円</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePrepayment(pp.id)}
+                            className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {/* Additional rows */}
-                  {sortedRateChanges.filter(rc => rc.id !== "base").map(rc => {
-                    const beyondTerm = (parseInt(rc.fromYear) || 0) > termYearsNum;
-                    return (
-                      <div key={rc.id} className={`flex items-center gap-2 ${beyondTerm ? "opacity-50" : ""}`}>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <input
-                            type="number"
-                            value={rc.fromYear}
-                            min={2}
-                            max={termYearsNum}
-                            onChange={e => updateRateChange(rc.id, "fromYear", e.target.value)}
-                            className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                          <span className="text-xs text-gray-500 whitespace-nowrap">年目〜</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={rc.rate}
-                            step="0.025"
-                            onChange={e => updateRateChange(rc.id, "rate", e.target.value)}
-                            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                          <span className="text-xs text-gray-500">%</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeRateChange(rc.id)}
-                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
-                        >
-                          <X size={13} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                )}
                 <button
                   type="button"
-                  onClick={addRateChange}
-                  className="mt-2 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  onClick={addPrepayment}
+                  className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
                 >
                   <Plus size={12} />
-                  金利変更を追加
+                  繰り上げ返済を追加
                 </button>
               </div>
             )}
