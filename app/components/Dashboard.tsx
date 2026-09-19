@@ -516,6 +516,15 @@ export default function Dashboard() {
     ).map(([name, value]) => ({ name, value: value as number })),
   ].filter(d => d.value > 0);
 
+  const memberOptions = useMemo(() => {
+    const opts: { id: "self" | "spouse"; label: string }[] = [
+      { id: "self", label: userProfile?.displayName || "自分" },
+    ];
+    const spouse = userProfile?.familyMembers?.find(m => m.type === "spouse");
+    if (spouse) opts.push({ id: "spouse", label: spouse.name || "配偶者" });
+    return opts;
+  }, [userProfile]);
+
   // ── Life Plan Simulation ──────────────────────────────
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
   const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
@@ -972,7 +981,7 @@ export default function Dashboard() {
                 <button onClick={() => { setEditingStock(null); setShowStockModal(true); }} className="mt-3 text-xs text-green-600 hover:underline">最初の銘柄を追加する</button>
               </div>
             ) : (
-              <div className="space-y-3">{stocks.map(s => <StockCard key={s.id} stock={s} onEdit={s => { setEditingStock(s); setShowStockModal(true); }} onDelete={handleDeleteStock} />)}</div>
+              <div className="space-y-3">{stocks.map(s => <StockCard key={s.id} stock={s} memberLabel={s.memberId ? memberOptions.find(o => o.id === s.memberId)?.label : undefined} onEdit={s => { setEditingStock(s); setShowStockModal(true); }} onDelete={handleDeleteStock} />)}</div>
             )}
           </div>
         )}
@@ -991,7 +1000,7 @@ export default function Dashboard() {
                 <button onClick={() => { setEditingFund(null); setShowFundModal(true); }} className="mt-3 text-xs text-purple-600 hover:underline">最初のファンドを追加する</button>
               </div>
             ) : (
-              <div className="space-y-3">{funds.map(f => <FundCard key={f.id} fund={f} onEdit={f => { setEditingFund(f); setShowFundModal(true); }} onDelete={handleDeleteFund} />)}</div>
+              <div className="space-y-3">{funds.map(f => <FundCard key={f.id} fund={f} memberLabel={f.memberId ? memberOptions.find(o => o.id === f.memberId)?.label : undefined} onEdit={f => { setEditingFund(f); setShowFundModal(true); }} onDelete={handleDeleteFund} />)}</div>
             )}
           </div>
         )}
@@ -1619,8 +1628,8 @@ export default function Dashboard() {
 
       {/* Modals */}
       {showAssetModal && <AssetModal asset={editingAsset} onSave={handleSaveAsset} onClose={() => { setShowAssetModal(false); setEditingAsset(null); }} />}
-      {showStockModal && <StockModal stock={editingStock} onSave={handleSaveStock} onClose={() => { setShowStockModal(false); setEditingStock(null); }} />}
-      {showFundModal && <FundModal fund={editingFund} onSave={handleSaveFund} onClose={() => { setShowFundModal(false); setEditingFund(null); }} />}
+      {showStockModal && <StockModal stock={editingStock} memberOptions={memberOptions} onSave={handleSaveStock} onClose={() => { setShowStockModal(false); setEditingStock(null); }} />}
+      {showFundModal && <FundModal fund={editingFund} memberOptions={memberOptions} onSave={handleSaveFund} onClose={() => { setShowFundModal(false); setEditingFund(null); }} />}
       {showGoalModal && <GoalModal goal={editingGoal} totalAssets={grandTotal} onSave={handleSaveGoal} onClose={() => { setShowGoalModal(false); setEditingGoal(null); }} />}
       {showExpenseModal && <ExpenseModal expense={editingExpense} onSave={handleSaveExpense} onClose={() => { setShowExpenseModal(false); setEditingExpense(null); }} />}
       {showIncomeModal && <IncomeProfileModal profile={editingIncome} userProfile={userProfile} onSave={handleSaveIncome} onClose={() => { setShowIncomeModal(false); setEditingIncome(null); }} />}

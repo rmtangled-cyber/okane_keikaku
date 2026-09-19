@@ -9,16 +9,20 @@ const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
 ];
 
+interface MemberOption { id: "self" | "spouse"; label: string; }
+
 interface Props {
   stock?: StockHolding | null;
+  memberOptions?: MemberOption[];
   onSave: (s: Omit<StockHolding, "id" | "updatedAt">) => void;
   onClose: () => void;
 }
 
-export default function StockModal({ stock, onSave, onClose }: Props) {
+export default function StockModal({ stock, memberOptions, onSave, onClose }: Props) {
   const [ticker, setTicker] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("特定口座");
+  const [memberId, setMemberId] = useState<"self" | "spouse" | undefined>(undefined);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [shares, setShares] = useState("");
   const [currentPrice, setCurrentPrice] = useState("");
@@ -32,6 +36,7 @@ export default function StockModal({ stock, onSave, onClose }: Props) {
       setTicker(stock.ticker);
       setName(stock.name);
       setAccountType(stock.accountType);
+      setMemberId(stock.memberId);
       setPurchasePrice(String(stock.purchasePrice));
       setShares(String(stock.shares));
       setCurrentPrice(String(stock.currentPrice));
@@ -63,6 +68,7 @@ export default function StockModal({ stock, onSave, onClose }: Props) {
     onSave({
       ticker: ticker.toUpperCase(),
       name, accountType,
+      memberId: memberId || undefined,
       purchasePrice: pp,
       shares: sh,
       currentPrice: cp,
@@ -83,6 +89,28 @@ export default function StockModal({ stock, onSave, onClose }: Props) {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {memberOptions && memberOptions.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">名義人</label>
+              <div className="flex gap-2">
+                {memberOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setMemberId(memberId === opt.id ? undefined : opt.id)}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
+                      memberId === opt.id
+                        ? "bg-blue-600 border-blue-600 text-white"
+                        : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

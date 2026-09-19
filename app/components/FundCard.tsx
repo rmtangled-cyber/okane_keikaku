@@ -15,11 +15,12 @@ const PROJECTION_YEARS = [5, 10, 20, 30];
 
 interface Props {
   fund: FundHolding;
+  memberLabel?: string;
   onEdit: (f: FundHolding) => void;
   onDelete: (id: string) => void;
 }
 
-export default function FundCard({ fund, onEdit, onDelete }: Props) {
+export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props) {
   const gain = fund.currentValue - fund.purchaseAmount;
   const gainPct = fund.purchaseAmount > 0 ? (gain / fund.purchaseAmount) * 100 : 0;
   const tax = calcTax(gain, fund.accountType);
@@ -37,9 +38,14 @@ export default function FundCard({ fund, onEdit, onDelete }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex flex-col gap-1">
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${ACCOUNT_COLORS[fund.accountType]}`}>
-            {fund.accountType}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACCOUNT_COLORS[fund.accountType]}`}>
+              {fund.accountType}
+            </span>
+            {memberLabel && (
+              <span className="text-xs bg-blue-50 text-blue-600 font-medium rounded-full px-2 py-0.5">{memberLabel}</span>
+            )}
+          </div>
           <span className="font-semibold text-gray-900">{fund.name}</span>
           {fund.note && <span className="text-xs text-gray-400">{fund.note}</span>}
         </div>
