@@ -231,12 +231,13 @@ export default function MortgageCalc() {
     const rateChanges = raw.rateChanges as PropertyRateChange[] | undefined;
     const prepayments = raw.prepayments as PrepaymentEntry[] | undefined;
     const bonusRepaymentMan = raw.bonusRepaymentMan as number | undefined;
+    const bridgeLoanRate = raw.bridgeLoanRate as string | undefined;
 
     if (Array.isArray(raw.costItems) && raw.costItems.length > 0) {
       return {
         id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed,
         termYears, rateChanges, prepayments,
-        costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, note, updatedAt,
+        costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, bridgeLoanRate, note, updatedAt,
       };
     }
 
@@ -252,7 +253,7 @@ export default function MortgageCalc() {
     if (balance > 0) costItems.push({ id: `ci_bal_${id}`, name: "残金決済", date: String(raw.finalSettlementDate ?? ""), amountMan: balance });
     if (misc > 0) costItems.push({ id: `ci_misc_${id}`, name: "諸費用", date: "", amountMan: misc });
 
-    return { id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed, termYears, rateChanges, prepayments, costItems, bonusRepaymentMan, note, updatedAt };
+    return { id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed, termYears, rateChanges, prepayments, costItems, bonusRepaymentMan, bridgeLoanRate, note, updatedAt };
   }
 
   useEffect(() => {
