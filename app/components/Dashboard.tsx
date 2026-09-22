@@ -87,6 +87,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
 };
 
 type Tab = "概要" | "株式" | "貯金" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type TabGroup = "トップ" | "資産" | "生活費" | "マイホーム" | "設定";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
   { name: "家賃",     emoji: "🏠", category: "住居費",    isFixed: true  },
@@ -454,7 +455,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "生活費", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "ライフプラン", "株式", "貯金", "投資信託", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -462,6 +463,37 @@ export default function Dashboard() {
   const handleTabChange = (t: Tab) => {
     setTab(t);
     try { localStorage.setItem("okane_tab", t); } catch { /* ignore */ }
+  };
+
+  const TAB_GROUPS: { group: TabGroup; icon: React.ReactNode; tabs: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
+    { group: "トップ", icon: <BarChart2 size={14} />, tabs: [
+      { key: "概要",        label: "サマリ",       icon: <BarChart2 size={13} /> },
+      { key: "ライフプラン", label: "ライフプラン", icon: <MapPin size={13} /> },
+    ]},
+    { group: "資産", icon: <Wallet size={14} />, tabs: [
+      { key: "株式",     label: "株式",     icon: <TrendingUp size={13} /> },
+      { key: "貯金",     label: "貯金",     icon: <PiggyBank size={13} /> },
+      { key: "投資信託", label: "投資信託", icon: <Layers size={13} /> },
+    ]},
+    { group: "生活費", icon: <BookOpen size={14} />, tabs: [
+      { key: "生活費", label: "生活費", icon: <BookOpen size={13} /> },
+    ]},
+    { group: "マイホーム", icon: <Building2 size={14} />, tabs: [
+      { key: "住宅ローン",  label: "住宅ローン",  icon: <Building2 size={13} /> },
+      { key: "固定資産税",  label: "固定資産税",  icon: <Landmark size={13} /> },
+      { key: "太陽光",      label: "太陽光",      icon: <Sun size={13} /> },
+      { key: "申請チェック", label: "申請チェック", icon: <CheckCircle2 size={13} /> },
+    ]},
+    { group: "設定", icon: <UserRound size={14} />, tabs: [
+      { key: "プロフィール", label: "プロフィール", icon: <UserRound size={13} /> },
+    ]},
+  ];
+
+  const getGroupForTab = (t: Tab): TabGroup => {
+    for (const g of TAB_GROUPS) {
+      if (g.tabs.some(s => s.key === t)) return g.group;
+    }
+    return "トップ";
   };
 
   // Modal states
@@ -994,26 +1026,34 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-3 border-t border-gray-50 overflow-x-auto">
-          {([
-            { key: "概要", icon: <BarChart2 size={14} /> },
-            { key: "株式", icon: <TrendingUp size={14} /> },
-            { key: "貯金", icon: <PiggyBank size={14} /> },
-            { key: "投資信託", icon: <Layers size={14} /> },
-            { key: "生活費", icon: <BookOpen size={14} /> },
-            { key: "ライフプラン", icon: <MapPin size={14} /> },
-            { key: "固定資産税", icon: <Landmark size={14} /> },
-            { key: "申請チェック", icon: <CheckCircle2 size={14} /> },
-            { key: "太陽光", icon: <Sun size={14} /> },
-            { key: "住宅ローン", icon: <Building2 size={14} /> },
-            { key: "プロフィール", icon: <UserRound size={14} /> },
-          ] as { key: Tab; icon: React.ReactNode }[]).map(({ key, icon }) => (
-            <button key={key} onClick={() => handleTabChange(key)}
-              className={`flex items-center gap-1.5 py-3 px-1 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-              {icon}{key}
-            </button>
-          ))}
+        {/* 上段: グループタブ */}
+        <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-2 border-t border-gray-100 overflow-x-auto">
+          {TAB_GROUPS.map(({ group, icon, tabs }) => {
+            const isActive = getGroupForTab(tab) === group;
+            return (
+              <button key={group}
+                onClick={() => handleTabChange(tabs[0].key)}
+                className={`flex items-center gap-1.5 py-2.5 px-2 sm:px-3 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${isActive ? "border-blue-600 text-blue-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
+                {icon}{group}
+              </button>
+            );
+          })}
         </div>
+        {/* 下段: サブタブ（サブタブが2つ以上あるグループのみ表示） */}
+        {(() => {
+          const activeGroup = TAB_GROUPS.find(g => g.group === getGroupForTab(tab));
+          if (!activeGroup || activeGroup.tabs.length <= 1) return null;
+          return (
+            <div className="max-w-4xl mx-auto px-4 flex gap-1 sm:gap-2 bg-gray-50/80 overflow-x-auto">
+              {activeGroup.tabs.map(({ key, label, icon }) => (
+                <button key={key} onClick={() => handleTabChange(key)}
+                  className={`flex items-center gap-1 py-2 px-2 sm:px-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${tab === key ? "border-blue-500 text-blue-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
+                  {icon}{label}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
