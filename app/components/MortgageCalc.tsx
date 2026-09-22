@@ -46,8 +46,10 @@ function simulateCustom(
     return r;
   };
 
+  // ボーナス返済は年間返済額の内訳振り分け: 月次返済 = 標準月次 - ボーナス×2/12
+  const bonusMonthlyOffset = bonusSemiAnnual * 2 / 12;
   let currentRate = getRateForYear(1);
-  let currentPayment = calcPayment(principal, currentRate, termMonths);
+  let currentPayment = Math.max(0, calcPayment(principal, currentRate, termMonths) - bonusMonthlyOffset);
   let balance = principal;
   let unpaidInterest = 0;
   let totalPaid = 0;
@@ -89,17 +91,17 @@ function simulateCustom(
         rateAtStart: getRateForYear(periodStartYear),
       });
       const remaining = termMonths - m + 1;
-      const ideal = calcPayment(balance, currentRate, remaining);
+      const idealMonthly = Math.max(0, calcPayment(balance, currentRate, remaining) - bonusMonthlyOffset);
       const cap = currentPayment * 1.25;
-      periodCapped = ideal > cap;
-      currentPayment = balance > 0 ? Math.min(ideal, cap) : 0;
+      periodCapped = idealMonthly > cap;
+      currentPayment = balance > 0 ? Math.min(idealMonthly, cap) : 0;
       periodStartYear = year;
     }
 
     if (bonusSemiAnnual > 0 && m % 6 === 0 && balance > 0) {
       const applied = Math.min(bonusSemiAnnual, balance);
       balance = Math.max(0, balance - applied);
-      totalExtra += applied;
+      totalPaid += applied;  // ボーナス返済は通常返済の一部（繰上げではない）
       annualPrincipalAcc += applied;
     }
 
