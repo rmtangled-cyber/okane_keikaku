@@ -684,17 +684,54 @@ export default function MortgageCalc() {
                       const distinctDates = new Set(loanItems.map(c => c.date).filter(Boolean));
                       if (distinctDates.size < 2) return null;
                       const sortedDates = [...distinctDates].sort();
-                      const bridgeFrom = sortedDates[0];
-                      const bridgeTo = sortedDates[sortedDates.length - 1];
-                      const rate = prop.bridgeLoanRate ? parseFloat(prop.bridgeLoanRate) : null;
-                      const totalDisbursed = loanItems.reduce((s, c) => s + c.amountMan, 0);
-                      const monthlyInterest = rate ? Math.floor(totalDisbursed * 10000 * rate / 100 / 12) : null;
+                      const baseRate = parseFloat(sharedBaseRate) || 2.475;
+                      const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
+                      // Get base rate applicable at a given calendar year-month (YYYY-MM)
+                      const getBaseRateAt = (dateStr: string) => {
+                        const calYear = parseInt(dateStr.slice(0, 4));
+                        let r = baseRate;
+                        for (const rs of sortedScen) {
+                          if (parseInt(rs.fromYear) <= calYear) r = parseFloat(rs.baseRate) || r;
+                        }
+                        return r;
+                      };
+                      // bridge rate = user's bridgeLoanRate, adjusted if base rate shifts
+                      // treat bridgeLoanRate as spread over initial base rate
+                      const userBridgeRate = prop.bridgeLoanRate ? parseFloat(prop.bridgeLoanRate) : null;
+                      const initialBaseRate = getBaseRateAt(sortedDates[0]);
+                      const bridgeSpread = userBridgeRate !== null ? userBridgeRate - initialBaseRate : null;
+                      // Build phases: from each date to next, cumulative balance grows
+                      const phases: { from: string; to: string; balance: number; monthlyInterest: number | null; appliedRate: number | null }[] = [];
+                      let cumBalance = 0;
+                      for (let i = 0; i < sortedDates.length - 1; i++) {
+                        const phaseFrom = sortedDates[i];
+                        const phaseTo = sortedDates[i + 1];
+                        // Add all disbursements on or before phaseFrom
+                        cumBalance = loanItems
+                          .filter(c => c.date && c.date <= phaseFrom)
+                          .reduce((s, c) => s + c.amountMan, 0);
+                        const phaseBaseRate = getBaseRateAt(phaseFrom);
+                        const appliedRate = bridgeSpread !== null ? phaseBaseRate + bridgeSpread : null;
+                        const monthlyInterest = appliedRate !== null
+                          ? Math.floor(cumBalance * 10000 * appliedRate / 100 / 12)
+                          : null;
+                        phases.push({ from: phaseFrom, to: phaseTo, balance: cumBalance, monthlyInterest, appliedRate });
+                      }
                       return (
-                        <div className="mt-2 px-2 py-2 bg-amber-50 border border-amber-100 rounded-lg text-xs space-y-0.5">
-                          <div className="font-medium text-amber-700">つなぎ融資期間: {bridgeFrom} 〜 {bridgeTo}</div>
-                          {rate && monthlyInterest !== null ? (
-                            <div className="text-amber-600">
-                              つなぎ金利 {prop.bridgeLoanRate}% ／ 月次利息目安: 約{(monthlyInterest / 10000).toFixed(1)}万円
+                        <div className="mt-2 px-2 py-2 bg-amber-50 border border-amber-100 rounded-lg text-xs space-y-1">
+                          <div className="font-medium text-amber-700">
+                            つなぎ融資期間: {sortedDates[0]} 〜 {sortedDates[sortedDates.length - 1]}
+                          </div>
+                          {userBridgeRate !== null ? (
+                            <div className="space-y-0.5">
+                              {phases.map((ph, idx) => (
+                                <div key={idx} className="flex items-baseline justify-between text-amber-600">
+                                  <span>{ph.from} 〜 {ph.to}（{ph.balance.toLocaleString()}万円）</span>
+                                  <span className="tabular-nums ml-2 whitespace-nowrap">
+                                    {ph.appliedRate !== null ? `${ph.appliedRate.toFixed(3)}% → 約${((ph.monthlyInterest ?? 0) / 10000).toFixed(1)}万円/月` : "—"}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           ) : (
                             <div className="text-amber-500">物件設定からつなぎ金利を入力すると利息の目安を表示します</div>
