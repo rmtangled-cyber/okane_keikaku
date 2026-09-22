@@ -236,23 +236,35 @@ function calcMortgagePaymentForSimYear(
   rateScenario: RateScenarioEntry[],
 ): number {
   let total = 0;
+  const calYear = simStartYear + simYearIndex;
   for (const prop of props) {
-    const principal = (prop.costItems ?? [])
-      .filter(c => (c.paymentType ?? "loan") === "loan")
-      .reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
+    const loanCostItems = (prop.costItems ?? []).filter(c => (c.paymentType ?? "loan") === "loan");
+    const principal = loanCostItems.reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
     if (principal <= 0) continue;
     const termYears = parseInt(prop.termYears ?? "35") || 35;
-    const lastDate = (prop.costItems ?? [])
-      .filter(c => (c.paymentType ?? "loan") === "loan" && c.date)
-      .map(c => c.date!)
-      .sort()
-      .at(-1);
+    const datedItems = loanCostItems.filter(c => c.date);
+    const sortedDates = datedItems.map(c => c.date!).sort();
+    const firstDate = sortedDates[0];
+    const lastDate = sortedDates[sortedDates.length - 1];
+    const firstYear = firstDate ? parseInt(firstDate.slice(0, 4)) : calYear;
     const loanStartYear = lastDate ? parseInt(lastDate.slice(0, 4)) : simStartYear;
-    const loanYearIndex = simYearIndex - (loanStartYear - simStartYear);
-    if (loanYearIndex < 0 || loanYearIndex >= termYears) continue;
-    const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario);
-    const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings);
-    total += paymentsByYear[loanYearIndex] ?? 0;
+
+    const distinctDates = new Set(datedItems.map(c => c.date!));
+    const hasBridge = distinctDates.size >= 2 && !!prop.bridgeLoanRate;
+
+    if (hasBridge && calYear >= firstYear && calYear < loanStartYear) {
+      const bridgeRate = parseFloat(prop.bridgeLoanRate!) || 0;
+      const disbursed = loanCostItems
+        .filter(c => c.date && parseInt(c.date.slice(0, 4)) <= calYear)
+        .reduce((s, c) => s + (c.amountMan || 0), 0) * 10000;
+      total += Math.floor(disbursed * bridgeRate / 100 / 12);
+    } else if (calYear >= loanStartYear) {
+      const loanYearIndex = calYear - loanStartYear;
+      if (loanYearIndex >= termYears) continue;
+      const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario);
+      const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings);
+      total += paymentsByYear[loanYearIndex] ?? 0;
+    }
   }
   return total;
 }
