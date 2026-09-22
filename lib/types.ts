@@ -229,7 +229,8 @@ export interface MortgageProperty {
   rateChanges?: PropertyRateChange[]; // レガシー金利変更プラン
   prepayments?: PrepaymentEntry[];    // 繰り上げ返済プラン
   costItems: PropertyCostItem[];
-  bonusRepaymentMan?: number; // ボーナス返済額（万円/回、年2回）
+  bonusRepaymentMan?: number; // ボーナス返済額（万円/回）
+  bonusTimesPerYear?: number; // ボーナス返済回数（年N回、デフォルト2）
   bridgeLoanRate?: string;   // つなぎ融資金利（%）複数日付ローンで自動検出
   note?: string;
   updatedAt: string;

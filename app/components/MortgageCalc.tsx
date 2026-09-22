@@ -34,7 +34,8 @@ function simulateCustom(
   principal: number,
   termMonths: number,
   rateChanges: { fromYear: number; rate: number; extra: number }[],
-  bonusSemiAnnual: number = 0,
+  bonusPerOccurrence: number = 0,
+  bonusTimesPerYear: number = 2,
 ): SimResult {
   const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
 
@@ -46,8 +47,9 @@ function simulateCustom(
     return r;
   };
 
-  // ボーナス返済は年間返済額の内訳振り分け: 月次返済 = 標準月次 - ボーナス×2/12
-  const bonusMonthlyOffset = bonusSemiAnnual * 2 / 12;
+  // ボーナス返済は年間返済額の内訳振り分け: 月次返済 = 標準月次 - ボーナス×N/12
+  const bonusIntervalMonths = bonusTimesPerYear > 0 ? Math.round(12 / bonusTimesPerYear) : 12;
+  const bonusMonthlyOffset = bonusPerOccurrence * bonusTimesPerYear / 12;
   let currentRate = getRateForYear(1);
   let currentPayment = Math.max(0, calcPayment(principal, currentRate, termMonths) - bonusMonthlyOffset);
   let balance = principal;
@@ -98,8 +100,8 @@ function simulateCustom(
       periodStartYear = year;
     }
 
-    if (bonusSemiAnnual > 0 && m % 6 === 0 && balance > 0) {
-      const applied = Math.min(bonusSemiAnnual, balance);
+    if (bonusPerOccurrence > 0 && m % bonusIntervalMonths === 0 && balance > 0) {
+      const applied = Math.min(bonusPerOccurrence, balance);
       balance = Math.max(0, balance - applied);
       totalPaid += applied;  // ボーナス返済は通常返済の一部（繰上げではない）
       annualPrincipalAcc += applied;
@@ -233,13 +235,14 @@ export default function MortgageCalc() {
     const rateChanges = raw.rateChanges as PropertyRateChange[] | undefined;
     const prepayments = raw.prepayments as PrepaymentEntry[] | undefined;
     const bonusRepaymentMan = raw.bonusRepaymentMan as number | undefined;
+    const bonusTimesPerYear = raw.bonusTimesPerYear as number | undefined;
     const bridgeLoanRate = raw.bridgeLoanRate as string | undefined;
 
     if (Array.isArray(raw.costItems) && raw.costItems.length > 0) {
       return {
         id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed,
         termYears, rateChanges, prepayments,
-        costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, bridgeLoanRate, note, updatedAt,
+        costItems: raw.costItems as PropertyCostItem[], bonusRepaymentMan, bonusTimesPerYear, bridgeLoanRate, note, updatedAt,
       };
     }
 
@@ -255,7 +258,7 @@ export default function MortgageCalc() {
     if (balance > 0) costItems.push({ id: `ci_bal_${id}`, name: "残金決済", date: String(raw.finalSettlementDate ?? ""), amountMan: balance });
     if (misc > 0) costItems.push({ id: `ci_misc_${id}`, name: "諸費用", date: "", amountMan: misc });
 
-    return { id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed, termYears, rateChanges, prepayments, costItems, bonusRepaymentMan, bridgeLoanRate, note, updatedAt };
+    return { id, propertyName, borrowerId, bankName, bankRate, discountRate, isFixed, termYears, rateChanges, prepayments, costItems, bonusRepaymentMan, bonusTimesPerYear, bridgeLoanRate, note, updatedAt };
   }
 
   useEffect(() => {
@@ -408,6 +411,7 @@ export default function MortgageCalc() {
         const propRate = parseFloat(prop.bankRate ?? "1.075") || 1.075;
         const propTermMonths = propTermYears * 12;
         const propBonusSemiAnnual = (prop.bonusRepaymentMan ?? 0) * 10000;
+        const propBonusTimesPerYear = prop.bonusTimesPerYear ?? 2;
 
         // Loan start calendar year (last disbursement date)
         const propStart = propStartDates[pi];
@@ -465,7 +469,7 @@ export default function MortgageCalc() {
           }
         }
 
-        const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual);
+        const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual, propBonusTimesPerYear);
 
         totalPaid += propSim.totalPaid;
         totalExtra += propSim.totalExtra;
@@ -607,7 +611,7 @@ export default function MortgageCalc() {
                       {!prop.isFixed && !prop.discountRate && prop.bankRate && <span>{prop.bankRate}%</span>}
                       {prop.termYears && <span>{prop.termYears}年</span>}
                       {(prop.bonusRepaymentMan ?? 0) > 0 && (
-                        <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年2回</span>
+                        <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年{prop.bonusTimesPerYear ?? 2}回</span>
                       )}
                       {prop.bridgeLoanRate && (
                         <span className="text-amber-600">つなぎ {prop.bridgeLoanRate}%</span>
