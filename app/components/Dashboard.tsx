@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye, PiggyBank,
 } from "lucide-react";
 
 import {
@@ -18,6 +18,7 @@ import {
   SpendingRecord, LoanPlan, ExpenseCategory, calcTax,
   MortgageSimPlan, MortgageProperty, RateScenarioEntry,
   UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
+  SavingsAccount, SavingsAccountType,
 } from "@/lib/types";
 import { applyMonthlyContributions } from "@/lib/autoContrib";
 import {
@@ -27,6 +28,7 @@ import {
   exportToCSV,
   getStocks, saveStocks, loadStocks,
   getFunds, saveFunds, loadFunds,
+  getSavingsAccounts, saveSavingsAccounts, loadSavingsAccounts,
   getExpenses, saveExpenses, loadExpenses,
   getIncomeProfiles, loadIncomeProfiles, upsertIncomeProfile, deleteIncomeProfileById,
   getLifeEvents, saveLifeEvents, loadLifeEvents,
@@ -84,7 +86,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "貯金" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
   { name: "家賃",     emoji: "🏠", category: "住居費",    isFixed: true  },
@@ -440,6 +442,9 @@ export default function Dashboard() {
   const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>([]);
   const [spendingRecords, setSpendingRecords] = useState<SpendingRecord[]>([]);
   const [loanPlans, setLoanPlans] = useState<LoanPlan[]>([]);
+  const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
+  const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [editingSavings, setEditingSavings] = useState<SavingsAccount | null>(null);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
   const [mortgageProperties, setMortgageProperties] = useState<MortgageProperty[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -449,7 +454,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "投資信託", "生活費", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "生活費", "ライフプラン", "固定資産税", "申請チェック", "太陽光", "住宅ローン", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -510,6 +515,7 @@ export default function Dashboard() {
     loadInsurancePlans().then(setInsurancePlans);
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
+    loadSavingsAccounts().then(setSavingsAccounts);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
     loadMortgageProperties().then(setMortgageProperties);
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
@@ -529,7 +535,8 @@ export default function Dashboard() {
   const stocksTotal = stocks.reduce((s, h) => s + h.currentPrice * h.shares, 0);
   const fundsTotal = funds.reduce((s, f) => s + f.currentValue, 0);
   const assetsTotal = assets.reduce((s, a) => s + a.amount, 0);
-  const grandTotal = stocksTotal + fundsTotal + assetsTotal;
+  const savingsTotal = savingsAccounts.reduce((s, a) => s + a.balance, 0);
+  const grandTotal = stocksTotal + fundsTotal + assetsTotal + savingsTotal;
 
   const stocksGain = stocks.reduce((s, h) => s + (h.currentPrice - h.purchasePrice) * h.shares, 0);
   const stocksTax = stocks.reduce((s, h) => s + calcTax((h.currentPrice - h.purchasePrice) * h.shares, h.accountType), 0);
@@ -991,6 +998,7 @@ export default function Dashboard() {
           {([
             { key: "概要", icon: <BarChart2 size={14} /> },
             { key: "株式", icon: <TrendingUp size={14} /> },
+            { key: "貯金", icon: <PiggyBank size={14} /> },
             { key: "投資信託", icon: <Layers size={14} /> },
             { key: "生活費", icon: <BookOpen size={14} /> },
             { key: "ライフプラン", icon: <MapPin size={14} /> },
@@ -1022,8 +1030,9 @@ export default function Dashboard() {
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
           <p className="text-sm text-blue-200 mb-1">総資産</p>
           <p className="text-4xl font-bold tracking-tight">¥{grandTotal.toLocaleString()}</p>
-          <div className="flex gap-4 mt-3 text-xs text-blue-300">
+          <div className="flex gap-4 mt-3 text-xs text-blue-300 flex-wrap">
             <span>株式 ¥{stocksTotal.toLocaleString()}</span>
+            <span>貯金 ¥{savingsTotal.toLocaleString()}</span>
             <span>投資信託 ¥{fundsTotal.toLocaleString()}</span>
             <span>その他 ¥{assetsTotal.toLocaleString()}</span>
           </div>
@@ -1103,6 +1112,97 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-3">{stocks.map(s => <StockCard key={s.id} stock={s} memberLabel={s.memberId ? memberOptions.find(o => o.id === s.memberId)?.label : undefined} onEdit={s => { setEditingStock(s); setShowStockModal(true); }} onDelete={handleDeleteStock} />)}</div>
+            )}
+          </div>
+        )}
+
+        {/* ── 貯金 ──────────────────────────────────────── */}
+        {tab === "貯金" && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">残高合計</span>
+                <span className="ml-2 font-bold text-gray-900">¥{savingsTotal.toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">口座数</span>
+                <span className="ml-2 font-bold text-gray-900">{savingsAccounts.length}件</span>
+              </div>
+            </div>
+
+            {!viewerOwnerUid && (
+              <button onClick={() => { setEditingSavings(null); setShowSavingsModal(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors">
+                <Plus size={16} />口座を追加
+              </button>
+            )}
+
+            <div className="space-y-3">
+              {savingsAccounts.length === 0 ? (
+                <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-gray-400 text-sm">
+                  口座がありません。「口座を追加」から登録してください。
+                </div>
+              ) : (
+                savingsAccounts.map(acct => (
+                  <div key={acct.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-gray-900 truncate">{acct.bankName}</span>
+                          <span className="text-gray-500 text-sm truncate">{acct.accountName}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${acct.accountType === "定期" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                            {acct.accountType}
+                          </span>
+                          {acct.memberId && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                              {acct.memberId === "self" ? "本人" : "配偶者"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-3 flex-wrap">
+                          <span className="text-xl font-bold text-gray-900">¥{acct.balance.toLocaleString()}</span>
+                          {acct.interestRate > 0 && (
+                            <span className="text-xs text-green-600">金利 {acct.interestRate}%</span>
+                          )}
+                        </div>
+                        {acct.note && <p className="text-xs text-gray-400 mt-1">{acct.note}</p>}
+                      </div>
+                      {!viewerOwnerUid && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => { setEditingSavings(acct); setShowSavingsModal(true); }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 rounded transition-colors">
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => {
+                            if (!confirm(`「${acct.bankName} ${acct.accountName}」を削除しますか？`)) return;
+                            const updated = savingsAccounts.filter(a => a.id !== acct.id);
+                            setSavingsAccounts(updated);
+                            saveSavingsAccounts(updated);
+                          }} className="p-1.5 text-gray-400 hover:text-red-600 rounded transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* 貯金口座モーダル */}
+            {showSavingsModal && (
+              <SavingsAccountModal
+                account={editingSavings}
+                onClose={() => setShowSavingsModal(false)}
+                onSave={(acct) => {
+                  const updated = editingSavings
+                    ? savingsAccounts.map(a => a.id === acct.id ? acct : a)
+                    : [...savingsAccounts, acct];
+                  setSavingsAccounts(updated);
+                  saveSavingsAccounts(updated);
+                  setShowSavingsModal(false);
+                }}
+              />
             )}
           </div>
         )}
@@ -1761,6 +1861,113 @@ export default function Dashboard() {
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
       {showPropertyTaxModal && <PropertyTaxModal key={editingPropertyTax?.id ?? "new"} entry={editingPropertyTax} onSave={handleSavePropertyTax} onClose={() => { setShowPropertyTaxModal(false); setEditingPropertyTax(null); }} />}
+    </div>
+  );
+}
+
+// ── SavingsAccountModal ───────────────────────────────────────────────────────
+
+function SavingsAccountModal({ account, onClose, onSave }: {
+  account: SavingsAccount | null;
+  onClose: () => void;
+  onSave: (acct: SavingsAccount) => void;
+}) {
+  const [bankName, setBankName] = useState(account?.bankName ?? "");
+  const [accountName, setAccountName] = useState(account?.accountName ?? "");
+  const [balance, setBalance] = useState(account ? String(account.balance) : "");
+  const [interestRate, setInterestRate] = useState(account ? String(account.interestRate) : "0");
+  const [accountType, setAccountType] = useState<SavingsAccountType>(account?.accountType ?? "普通");
+  const [memberId, setMemberId] = useState<"self" | "spouse" | "">(account?.memberId ?? "");
+  const [note, setNote] = useState(account?.note ?? "");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const bal = Math.round(parseFloat(balance.replace(/,/g, "")) || 0);
+    const rate = parseFloat(interestRate) || 0;
+    onSave({
+      id: account?.id ?? crypto.randomUUID(),
+      bankName: bankName.trim(),
+      accountName: accountName.trim(),
+      balance: bal,
+      interestRate: rate,
+      accountType,
+      memberId: memberId || undefined,
+      note: note.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h2 className="font-bold text-gray-900">{account ? "口座を編集" : "口座を追加"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">金融機関名 *</label>
+              <input value={bankName} onChange={e => setBankName(e.target.value)} required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="例: 三菱UFJ銀行" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">口座名</label>
+              <input value={accountName} onChange={e => setAccountName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="例: 給与口座" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">残高（円） *</label>
+            <input value={balance} onChange={e => setBalance(e.target.value)} required type="text" inputMode="numeric"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="例: 500000" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">種別</label>
+              <select value={accountType} onChange={e => setAccountType(e.target.value as SavingsAccountType)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="普通">普通</option>
+                <option value="定期">定期</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">金利（%）</label>
+              <input value={interestRate} onChange={e => setInterestRate(e.target.value)} type="text" inputMode="decimal"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="例: 0.02" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">名義人</label>
+            <select value={memberId} onChange={e => setMemberId(e.target.value as "self" | "spouse" | "")}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">未設定</option>
+              <option value="self">本人</option>
+              <option value="spouse">配偶者</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">メモ</label>
+            <input value={note} onChange={e => setNote(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="任意のメモ" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              キャンセル
+            </button>
+            <button type="submit"
+              className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
+              保存
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
