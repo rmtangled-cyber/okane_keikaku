@@ -417,10 +417,6 @@ export default function MortgageCalc() {
         const propStart = propStartDates[pi];
         const loanStartCalYear = propStart.getFullYear();
 
-        // Loan start calendar year (last disbursement date)
-        const propStart = propStartDates[pi];
-        const loanStartCalYear = propStart.getFullYear();
-
         let parsedChanges: { fromYear: number; rate: number; extra: number }[];
         const hasNewRateModel = prop.isFixed !== undefined || prop.discountRate !== undefined;
 
