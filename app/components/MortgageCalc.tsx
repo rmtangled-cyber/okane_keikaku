@@ -684,18 +684,79 @@ export default function MortgageCalc() {
                       const distinctDates = new Set(loanItems.map(c => c.date).filter(Boolean));
                       if (distinctDates.size < 2) return null;
                       const sortedDates = [...distinctDates].sort();
-                      const bridgeFrom = sortedDates[0];
-                      const bridgeTo = sortedDates[sortedDates.length - 1];
-                      const rate = prop.bridgeLoanRate ? parseFloat(prop.bridgeLoanRate) : null;
-                      const totalDisbursed = loanItems.reduce((s, c) => s + c.amountMan, 0);
-                      const monthlyInterest = rate ? Math.floor(totalDisbursed * 10000 * rate / 100 / 12) : null;
+                      const finalDate = sortedDates[sortedDates.length - 1];
+                      const baseRate = parseFloat(sharedBaseRate) || 2.475;
+                      const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
+                      const userBridgeRate = prop.bridgeLoanRate ? parseFloat(prop.bridgeLoanRate) : null;
+                      // spread = bridgeLoanRate minus base rate at first disbursement date
+                      const initialBaseRate = (() => {
+                        const calYear = parseInt(sortedDates[0].slice(0, 4));
+                        let r = baseRate;
+                        for (const rs of sortedScen) {
+                          if (parseInt(rs.fromYear) <= calYear) r = parseFloat(rs.baseRate) || r;
+                        }
+                        return r;
+                      })();
+                      const spread = userBridgeRate !== null ? userBridgeRate - initialBaseRate : null;
+                      // Calculate total interest for one disbursement from startDate to finalDate
+                      // splitting at rate-scenario year boundaries
+                      const calcTotalInterest = (amountMan: number, startDateStr: string): number => {
+                        if (spread === null) return 0;
+                        const endDate = new Date(finalDate);
+                        const startDate = new Date(startDateStr);
+                        if (startDate >= endDate) return 0;
+                        // Collect split points: start, each scenario year boundary within range, end
+                        const boundaries: Date[] = [startDate];
+                        for (const rs of sortedScen) {
+                          const y = parseInt(rs.fromYear);
+                          const d = new Date(`${y}-01-01`);
+                          if (d > startDate && d < endDate) boundaries.push(d);
+                        }
+                        boundaries.push(endDate);
+                        let total = 0;
+                        for (let i = 0; i < boundaries.length - 1; i++) {
+                          const segStart = boundaries[i];
+                          const segEnd = boundaries[i + 1];
+                          const calYear = segStart.getFullYear();
+                          let segBaseRate = baseRate;
+                          for (const rs of sortedScen) {
+                            if (parseInt(rs.fromYear) <= calYear) segBaseRate = parseFloat(rs.baseRate) || segBaseRate;
+                          }
+                          const appliedRate = segBaseRate + spread;
+                          const days = (segEnd.getTime() - segStart.getTime()) / (1000 * 60 * 60 * 24);
+                          total += amountMan * 10000 * appliedRate / 100 / 365 * days;
+                        }
+                        return Math.floor(total);
+                      };
+                      // Only show items that are NOT the final disbursement date (they carry bridge interest until finalDate)
+                      const bridgeItems = loanItems.filter(c => c.date && c.date < finalDate);
+                      const totalInterest = bridgeItems.reduce((s, c) => s + calcTotalInterest(c.amountMan, c.date!), 0);
                       return (
-                        <div className="mt-2 px-2 py-2 bg-amber-50 border border-amber-100 rounded-lg text-xs space-y-0.5">
-                          <div className="font-medium text-amber-700">つなぎ融資期間: {bridgeFrom} 〜 {bridgeTo}</div>
-                          {rate && monthlyInterest !== null ? (
-                            <div className="text-amber-600">
-                              つなぎ金利 {prop.bridgeLoanRate}% ／ 月次利息目安: 約{(monthlyInterest / 10000).toFixed(1)}万円
-                            </div>
+                        <div className="mt-2 px-2 py-2 bg-amber-50 border border-amber-100 rounded-lg text-xs space-y-1">
+                          <div className="font-medium text-amber-700">
+                            つなぎ融資期間: {sortedDates[0]} 〜 {finalDate}
+                          </div>
+                          {userBridgeRate !== null ? (
+                            <>
+                              <div className="space-y-0.5">
+                                {bridgeItems.map((item, idx) => {
+                                  const interest = calcTotalInterest(item.amountMan, item.date!);
+                                  const endDate = new Date(finalDate);
+                                  const startDate = new Date(item.date!);
+                                  const months = ((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.4)).toFixed(1);
+                                  return (
+                                    <div key={idx} className="flex items-baseline justify-between text-amber-600">
+                                      <span>{item.name}（{item.date} 〜 {finalDate}・{months}ヶ月）</span>
+                                      <span className="tabular-nums ml-2 whitespace-nowrap">計 約{(interest / 10000).toFixed(1)}万円</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex justify-between font-medium text-amber-700 border-t border-amber-200 pt-1 mt-0.5">
+                                <span>つなぎ利息合計</span>
+                                <span className="tabular-nums">約{(totalInterest / 10000).toFixed(1)}万円</span>
+                              </div>
+                            </>
                           ) : (
                             <div className="text-amber-500">物件設定からつなぎ金利を入力すると利息の目安を表示します</div>
                           )}
