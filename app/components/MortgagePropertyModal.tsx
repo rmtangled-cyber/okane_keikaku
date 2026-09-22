@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { X, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import type { MortgageProperty, PropertyCostItem, PrepaymentEntry } from "../../lib/types";
 
@@ -38,6 +38,14 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
     property?.prepayments ?? []
   );
   const [showPrepayPlan, setShowPrepayPlan] = useState(false);
+  const [bridgeLoanRate, setBridgeLoanRate] = useState(property?.bridgeLoanRate ?? "");
+
+  const hasBridge = useMemo(() => {
+    const loanItems = costItems.filter(
+      c => (c.paymentType ?? "loan") === "loan" && (c.amountMan || 0) > 0 && c.date
+    );
+    return new Set(loanItems.map(c => c.date)).size >= 2;
+  }, [costItems]);
 
   function addCostItem() {
     setCostItems(prev => [...prev, { id: `ci_${Date.now()}`, name: "", date: "", amountMan: 0 }]);
@@ -85,6 +93,7 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
       prepayments: validPrepayments.length > 0 ? validPrepayments : undefined,
       costItems: validItems,
       bonusRepaymentMan: bonus > 0 ? bonus : undefined,
+      bridgeLoanRate: hasBridge ? (bridgeLoanRate.trim() || undefined) : undefined,
       note: note || undefined,
       updatedAt: new Date().toISOString(),
     });
@@ -339,6 +348,28 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
               )}
             </div>
           </div>
+
+          {/* つなぎ融資 */}
+          {hasBridge && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-2">
+              <div className="text-xs font-medium text-amber-700">つなぎ融資が検出されました</div>
+              <p className="text-xs text-amber-600">複数の融資日が設定されています。最終融資実行日まではつなぎ融資として利息のみが発生します。</p>
+              <div>
+                <label className="block text-xs font-medium text-amber-700 mb-1">つなぎ金利（%）</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={bridgeLoanRate}
+                    step="0.025"
+                    onChange={e => setBridgeLoanRate(e.target.value)}
+                    placeholder="2.5"
+                    className="w-28 text-right border border-amber-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <span className="text-xs text-amber-700">%</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 繰り上げ返済プラン */}
           <div className="border border-gray-100 rounded-xl overflow-hidden">

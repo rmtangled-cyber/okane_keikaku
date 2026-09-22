@@ -597,6 +597,9 @@ export default function MortgageCalc() {
                       {(prop.bonusRepaymentMan ?? 0) > 0 && (
                         <span className="text-emerald-600">ボーナス {prop.bonusRepaymentMan!.toLocaleString()}万円×年2回</span>
                       )}
+                      {prop.bridgeLoanRate && (
+                        <span className="text-amber-600">つなぎ {prop.bridgeLoanRate}%</span>
+                      )}
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
                   </div>
@@ -667,6 +670,28 @@ export default function MortgageCalc() {
                         </li>
                       ))}
                     </ul>
+                    {(() => {
+                      const distinctDates = new Set(loanItems.map(c => c.date).filter(Boolean));
+                      if (distinctDates.size < 2) return null;
+                      const sortedDates = [...distinctDates].sort();
+                      const bridgeFrom = sortedDates[0];
+                      const bridgeTo = sortedDates[sortedDates.length - 1];
+                      const rate = prop.bridgeLoanRate ? parseFloat(prop.bridgeLoanRate) : null;
+                      const totalDisbursed = loanItems.reduce((s, c) => s + c.amountMan, 0);
+                      const monthlyInterest = rate ? Math.floor(totalDisbursed * 10000 * rate / 100 / 12) : null;
+                      return (
+                        <div className="mt-2 px-2 py-2 bg-amber-50 border border-amber-100 rounded-lg text-xs space-y-0.5">
+                          <div className="font-medium text-amber-700">つなぎ融資期間: {bridgeFrom} 〜 {bridgeTo}</div>
+                          {rate && monthlyInterest !== null ? (
+                            <div className="text-amber-600">
+                              つなぎ金利 {prop.bridgeLoanRate}% ／ 月次利息目安: 約{(monthlyInterest / 10000).toFixed(1)}万円
+                            </div>
+                          ) : (
+                            <div className="text-amber-500">物件設定からつなぎ金利を入力すると利息の目安を表示します</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
