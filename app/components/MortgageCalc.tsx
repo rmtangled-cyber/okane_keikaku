@@ -407,6 +407,10 @@ export default function MortgageCalc() {
         const propTermMonths = propTermYears * 12;
         const propBonusSemiAnnual = (prop.bonusRepaymentMan ?? 0) * 10000;
 
+        // Loan start calendar year (last disbursement date)
+        const propStart = propStartDates[pi];
+        const loanStartCalYear = propStart.getFullYear();
+
         let parsedChanges: { fromYear: number; rate: number; extra: number }[];
         const hasNewRateModel = prop.isFixed !== undefined || prop.discountRate !== undefined;
 
@@ -422,15 +426,21 @@ export default function MortgageCalc() {
           } else {
             const discount = parseFloat(prop.discountRate ?? "1.4");
             const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
-            const getBase = (year: number) => {
+            // rateScenario.fromYear is a calendar year; convert to loan year
+            const calToLoanYear = (calYear: number) => Math.max(1, calYear - loanStartCalYear + 1);
+            const getBase = (loanYear: number) => {
+              const calYear = loanStartCalYear + loanYear - 1;
               let base = parseFloat(sharedBaseRate) || 2.475;
               for (const rs of sortedScen) {
-                if (parseInt(rs.fromYear) <= year) base = parseFloat(rs.baseRate) || base;
+                if (parseInt(rs.fromYear) <= calYear) base = parseFloat(rs.baseRate) || base;
               }
               return base;
             };
             const changeYears = new Set<number>([1]);
-            sortedScen.forEach(rs => { const y = parseInt(rs.fromYear); if (y > 1) changeYears.add(y); });
+            sortedScen.forEach(rs => {
+              const loanY = calToLoanYear(parseInt(rs.fromYear));
+              if (loanY > 1) changeYears.add(loanY);
+            });
             (prop.prepayments ?? []).forEach(pp => { const y = parseInt(pp.fromYear); if (y >= 1) changeYears.add(y); });
             parsedChanges = Array.from(changeYears).map(year => ({
               fromYear: year,
@@ -461,7 +471,6 @@ export default function MortgageCalc() {
         finalLumpSum += propSim.finalLumpSum;
 
         // Calculate year offset from reference date
-        const propStart = propStartDates[pi];
         const offsetMonths =
           (propStart.getFullYear() - refDate.getFullYear()) * 12 +
           (propStart.getMonth() - refDate.getMonth());
@@ -754,7 +763,7 @@ export default function MortgageCalc() {
                 <span className="ml-1.5 font-normal text-gray-400">将来の基準金利変化をシミュレーション</span>
               </div>
               <div className="bg-blue-50/50 rounded-lg px-3 py-2 text-xs text-gray-500 mb-2">
-                1年目〜: <strong className="text-gray-700">{sharedBaseRate}%</strong>（現在）
+                〜{new Date().getFullYear()}年: <strong className="text-gray-700">{sharedBaseRate}%</strong>（現在）
               </div>
               {rateScenario.length > 0 && (
                 <div className="space-y-2 mb-2">
@@ -764,11 +773,12 @@ export default function MortgageCalc() {
                         <input
                           type="number"
                           value={rs.fromYear}
-                          min={2}
+                          min={2020}
+                          step={1}
                           onChange={e => setRateScenario(prev => prev.map(r => r.id === rs.id ? { ...r, fromYear: e.target.value } : r))}
-                          className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                         />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">年目〜</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">年〜</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <input
@@ -794,11 +804,13 @@ export default function MortgageCalc() {
               <button
                 type="button"
                 onClick={() => {
+                  const currentYear = new Date().getFullYear();
                   const last = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear)).at(-1);
                   const lastYear = parseInt(last?.fromYear ?? "0") || 0;
+                  const nextYear = lastYear >= currentYear ? lastYear + 3 : currentYear + 3;
                   setRateScenario(prev => [...prev, {
                     id: `rs_${Date.now()}`,
-                    fromYear: String(Math.max(lastYear + 5, 5)),
+                    fromYear: String(nextYear),
                     baseRate: last?.baseRate ?? sharedBaseRate,
                   }]);
                 }}
