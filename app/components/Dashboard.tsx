@@ -186,6 +186,7 @@ function buildPropPeriodSettings(
   prop: MortgageProperty,
   sharedBaseRate: number,
   rateScenario: RateScenarioEntry[],
+  loanStartCalYear: number,
 ): { fromYear?: number; rate: string; extra: string }[] {
   const hasNewRateModel = prop.isFixed !== undefined || prop.discountRate !== undefined;
   if (!hasNewRateModel) {
@@ -209,15 +210,21 @@ function buildPropPeriodSettings(
   }
   const discount = parseFloat(prop.discountRate ?? "1.4") || 1.4;
   const sortedScen = [...rateScenario].sort((a, b) => parseInt(a.fromYear) - parseInt(b.fromYear));
-  const getBase = (year: number) => {
+  // rateScenario.fromYear is a calendar year; convert to loan year for this property
+  const calToLoanYear = (calYear: number) => Math.max(1, calYear - loanStartCalYear + 1);
+  const getBase = (loanYear: number) => {
+    const calYear = loanStartCalYear + loanYear - 1;
     let base = sharedBaseRate;
     for (const rs of sortedScen) {
-      if (parseInt(rs.fromYear) <= year) base = parseFloat(rs.baseRate) || base;
+      if (parseInt(rs.fromYear) <= calYear) base = parseFloat(rs.baseRate) || base;
     }
     return base;
   };
   const changeYears = new Set<number>([1]);
-  sortedScen.forEach(rs => { const y = parseInt(rs.fromYear); if (y > 1) changeYears.add(y); });
+  sortedScen.forEach(rs => {
+    const loanY = calToLoanYear(parseInt(rs.fromYear));
+    if (loanY > 1) changeYears.add(loanY);
+  });
   (prop.prepayments ?? []).forEach(pp => { const y = parseInt(pp.fromYear); if (y >= 1) changeYears.add(y); });
   return Array.from(changeYears).map(year => ({
     fromYear: year,
@@ -261,7 +268,7 @@ function calcMortgagePaymentForSimYear(
     } else if (calYear >= loanStartYear) {
       const loanYearIndex = calYear - loanStartYear;
       if (loanYearIndex >= termYears) continue;
-      const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario);
+      const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario, loanStartYear);
       const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings);
       total += paymentsByYear[loanYearIndex] ?? 0;
     }
