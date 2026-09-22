@@ -23,7 +23,7 @@ interface SimPeriod { label: string; payment: number; capped: boolean; rateAtSta
 interface SimResult {
   periods: SimPeriod[];
   chartPoints: { year: number; principal: number; unpaidInterest: number; total: number }[];
-  annualBreakdown: { year: number; interest: number; principal: number }[];
+  annualBreakdown: { year: number; interest: number; principal: number; bonus: number }[];
   finalLumpSum: number;
   totalPaid: number;
   totalExtra: number;
@@ -63,6 +63,7 @@ function simulateCustom(
   const annualBreakdown: SimResult["annualBreakdown"] = [];
   let annualInterestAcc = 0;
   let annualPrincipalAcc = 0;
+  let annualBonusAcc = 0;
   const periods: SimPeriod[] = [];
   let periodStartYear = 1;
   let periodCapped = false;
@@ -105,6 +106,7 @@ function simulateCustom(
       balance = Math.max(0, balance - applied);
       totalPaid += applied;  // ボーナス返済は通常返済の一部（繰上げではない）
       annualPrincipalAcc += applied;
+      annualBonusAcc += applied;
     }
 
     const balanceBeforeMonthly = balance;
@@ -132,9 +134,11 @@ function simulateCustom(
         year: m / 12,
         interest: Math.round(annualInterestAcc),
         principal: Math.round(annualPrincipalAcc),
+        bonus: Math.round(annualBonusAcc),
       });
       annualInterestAcc = 0;
       annualPrincipalAcc = 0;
+      annualBonusAcc = 0;
     }
   }
 
@@ -162,12 +166,13 @@ const fmt = (v: number) =>
 
 function AnnualBreakdownTooltip({ active, payload, label }: {
   active?: boolean;
-  payload?: { name: string; value: number }[];
+  payload?: { name: string; value: number; payload?: { bonus?: number } }[];
   label?: string | number;
 }) {
   if (!active || !payload?.length) return null;
   const interest = payload.find(p => p.name === "利息")?.value ?? 0;
   const principal = payload.find(p => p.name === "元金返済")?.value ?? 0;
+  const bonus = payload[0]?.payload?.bonus ?? 0;
   const annual = interest + principal;
   const monthly = Math.round(annual / 12);
   return (
@@ -191,6 +196,12 @@ function AnnualBreakdownTooltip({ active, payload, label }: {
             <span className="text-blue-500">元金返済</span>
             <span className="text-blue-600">{fmt(principal)}</span>
           </div>
+          {bonus > 0 && (
+            <div className="flex justify-between gap-4">
+              <span className="text-violet-500">うちボーナス</span>
+              <span className="text-violet-600">{fmt(bonus)}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -377,7 +388,7 @@ export default function MortgageCalc() {
       let periods: SimPeriod[] = [];
 
       const allChartPoints = new Map<number, { principal: number; unpaidInterest: number; total: number }>();
-      const allAnnual = new Map<number, { interest: number; principal: number }>();
+      const allAnnual = new Map<number, { interest: number; principal: number; bonus: number }>();
       let totalPaid = 0;
       let totalExtra = 0;
       let totalInterest = 0;
@@ -504,8 +515,8 @@ export default function MortgageCalc() {
         }
         for (const ab of propSim.annualBreakdown) {
           const absYear = offsetYears + ab.year;
-          const ex = allAnnual.get(absYear) ?? { interest: 0, principal: 0 };
-          allAnnual.set(absYear, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal });
+          const ex = allAnnual.get(absYear) ?? { interest: 0, principal: 0, bonus: 0 };
+          allAnnual.set(absYear, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal, bonus: ex.bonus + (ab.bonus ?? 0) });
         }
       }
 
