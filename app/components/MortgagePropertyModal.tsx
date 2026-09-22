@@ -29,6 +29,9 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
   const [bonusRepaymentMan, setBonusRepaymentMan] = useState(
     property?.bonusRepaymentMan ? String(property.bonusRepaymentMan) : ""
   );
+  const [bonusTimesPerYear, setBonusTimesPerYear] = useState(
+    property?.bonusTimesPerYear ?? 2
+  );
   const [costItems, setCostItems] = useState<PropertyCostItem[]>(
     property?.costItems?.length
       ? property.costItems
@@ -93,6 +96,7 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
       prepayments: validPrepayments.length > 0 ? validPrepayments : undefined,
       costItems: validItems,
       bonusRepaymentMan: bonus > 0 ? bonus : undefined,
+      bonusTimesPerYear: bonus > 0 ? bonusTimesPerYear : undefined,
       bridgeLoanRate: hasBridge ? (bridgeLoanRate.trim() || undefined) : undefined,
       note: note || undefined,
       updatedAt: new Date().toISOString(),
@@ -331,9 +335,8 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               ボーナス返済額（万円/回・任意）
-              <span className="ml-1.5 font-normal text-gray-400">年2回（6月・12月）の加算分</span>
             </label>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="number"
                 value={bonusRepaymentMan}
@@ -342,9 +345,18 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
                 min={0}
                 className={`w-28 text-right ${inputCls}`}
               />
-              <span className="text-xs text-gray-500">万円 × 年2回</span>
+              <span className="text-xs text-gray-500">万円 ×</span>
+              <select
+                value={bonusTimesPerYear}
+                onChange={e => setBonusTimesPerYear(Number(e.target.value))}
+                className={`w-20 ${inputCls}`}
+              >
+                {[1, 2, 3, 4].map(n => (
+                  <option key={n} value={n}>年{n}回</option>
+                ))}
+              </select>
               {bonusRepaymentMan && parseFloat(bonusRepaymentMan) > 0 && (
-                <span className="text-xs text-blue-500">年間 {(parseFloat(bonusRepaymentMan) * 2).toLocaleString()}万円</span>
+                <span className="text-xs text-blue-500">年間 {(parseFloat(bonusRepaymentMan) * bonusTimesPerYear).toLocaleString()}万円</span>
               )}
             </div>
           </div>
