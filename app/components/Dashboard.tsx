@@ -86,7 +86,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "貯金" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "ライフプラン" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "貯金" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
 type TabGroup = "トップ" | "資産" | "生活費" | "マイホーム" | "設定";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
@@ -455,7 +455,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "ライフプラン", "株式", "貯金", "投資信託", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -467,8 +467,7 @@ export default function Dashboard() {
 
   const TAB_GROUPS: { group: TabGroup; icon: React.ReactNode; tabs: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
     { group: "トップ", icon: <BarChart2 size={14} />, tabs: [
-      { key: "概要",        label: "サマリ",       icon: <BarChart2 size={13} /> },
-      { key: "ライフプラン", label: "ライフプラン", icon: <MapPin size={13} /> },
+      { key: "概要", label: "サマリ", icon: <BarChart2 size={13} /> },
     ]},
     { group: "資産", icon: <Wallet size={14} />, tabs: [
       { key: "株式",     label: "株式",     icon: <TrendingUp size={13} /> },
@@ -945,7 +944,7 @@ export default function Dashboard() {
             </button>
           </div>
         );
-      case "ライフプラン":
+      case "概要":
         return <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
           <Plus size={15} /> イベント追加</button>;
@@ -1127,6 +1126,316 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* ── ライフプラン（サマリに統合） ─────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜90歳）
+              </h3>
+              <p className="text-xs text-gray-400 mb-3">
+                年齢別収入・ローン・保険・ライフイベントを考慮した試算
+                {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
+              </p>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-xs text-gray-500 shrink-0">生活費インフレ率</span>
+                <input
+                  type="range" min={0} max={5} step={0.5}
+                  value={inflationRate * 100}
+                  onChange={e => setInflationRate(parseFloat(e.target.value) / 100)}
+                  className="flex-1 accent-violet-500"
+                />
+                <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
+                  {inflationRate === 0 ? "なし" : `${(inflationRate * 100).toFixed(1)}%`}
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
+                <AreaChart data={simData} onClick={(e) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const ev = e as any;
+                  const pt: SimPoint | undefined = ev?.activePayload?.[0]?.payload
+                    ?? (ev?.activeLabel != null ? simData.find(p => p.year === ev.activeLabel) : undefined);
+                  if (pt) setSelectedSimPoint(prev => prev?.year === pt.year ? null : pt);
+                }} style={{ cursor: "pointer" }}>
+                  <defs>
+                    <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="year" interval={4} height={userProfile && userProfile.familyMembers.length > 0 ? 14 + 11 * (1 + userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 30}
+                    tick={(props: { x: string | number; y: string | number; payload: { value: number } }) => {
+                      const x = Number(props.x);
+                      const y = Number(props.y);
+                      const { payload } = props;
+                      const year = payload.value;
+                      const lines: { key: string; age: number }[] = [];
+                      if (userProfile) {
+                        lines.push({ key: userProfile.displayName ?? "自分", age: year - userProfile.birthYear });
+                        const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
+                        if (spouse) lines.push({ key: "配偶者", age: year - spouse.birthYear });
+                        userProfile.familyMembers.filter(m => m.type === "child").forEach((c, i) => {
+                          if (year >= c.birthYear) lines.push({ key: `子${i + 1}`, age: year - c.birthYear });
+                        });
+                      }
+                      return (
+                        <g transform={`translate(${x},${y})`}>
+                          <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill="#6b7280">{year}年</text>
+                          {lines.map((l, i) => (
+                            <text key={l.key} x={0} y={0} dy={12 + 11 * (i + 1)} textAnchor="middle" fontSize={8} fill="#9ca3af">{l.age}歳</text>
+                          ))}
+                        </g>
+                      );
+                    }}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
+                    v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
+                  } width={52} />
+                  <Tooltip content={<LifePlanTooltip />} />
+                  {lifeEvents.map(e => (
+                    <ReferenceLine key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
+                      label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
+                  ))}
+                  {loanPlans.map(l => {
+                    const endY = parseInt(loanEndYM(l.startDate, l.termMonths).split("-")[0]);
+                    return <ReferenceLine key={l.id} x={endY} stroke="#22c55e" strokeDasharray="3 3"
+                      label={{ value: `${l.name}完済`, position: "insideTopRight", fontSize: 8, fill: "#15803d" }} />;
+                  })}
+                  {mortgageSimPlan && parseFloat(mortgageSimPlan.principalMan) > 0 && (
+                    <ReferenceLine
+                      x={currentYear + (parseInt(mortgageSimPlan.termYears) || 35)}
+                      stroke="#3b82f6"
+                      strokeDasharray="3 3"
+                      label={{ value: `${mortgageSimPlan.bankName || "住宅ローン"}完済`, position: "insideTopRight", fontSize: 8, fill: "#1d4ed8" }}
+                    />
+                  )}
+                  <Area type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
+                </AreaChart>
+              </ResponsiveContainer>
+
+              <div className="grid grid-cols-4 gap-2 mt-4">
+                {[65, 70, 80, 90].map(age => {
+                  const y = age - selfAge;
+                  const pt = y > 0 ? simData[y] : undefined;
+                  const v = pt?.assets ?? 0;
+                  return (
+                    <div key={age} className="bg-violet-50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-gray-400">{age}歳時点</div>
+                      <div className="text-xs font-bold text-violet-700">
+                        {y <= 0 ? "−" : v >= 100000000 ? `${(v / 100000000).toFixed(1)}億` : `${Math.round(v / 10000)}万`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-2 text-center">グラフをタップすると年別の収支明細が表示されます</p>
+
+              {/* 年別収支明細 */}
+              {selectedSimPoint && (() => {
+                const d = selectedSimPoint;
+                const fmtM = (v: number) => `¥${Math.round(v).toLocaleString()}`;
+                const fmtY = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000).toLocaleString()}万`;
+                const balance = d.annualIncome - d.annualExpense;
+                const selfAgeAtYear = userProfile ? d.year - userProfile.birthYear : null;
+                return (
+                  <div className="mt-4 border border-violet-200 rounded-xl overflow-hidden">
+                    <div className="bg-violet-50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-gray-800 text-sm">{d.year}年</span>
+                        {selfAgeAtYear != null && <span className="ml-2 text-xs text-gray-500">（{selfAgeAtYear}歳）</span>}
+                        {d.label && <span className="ml-2 text-xs text-violet-600 bg-violet-100 rounded px-1.5 py-0.5">{d.label}</span>}
+                      </div>
+                      <button onClick={() => setSelectedSimPoint(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕ 閉じる</button>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {/* 収入 */}
+                      <div className="px-4 py-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold text-teal-700">収入（年間）</span>
+                          <span className="text-sm font-bold text-teal-700">+{fmtY(d.annualIncome)}円</span>
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-gray-50">
+                            {d.incomeItems.map((item, i) => (
+                              <tr key={i}>
+                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
+                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* 支出 */}
+                      <div className="px-4 py-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold text-rose-600">支出（年間）</span>
+                          <span className="text-sm font-bold text-rose-600">−{fmtY(d.annualExpense)}円</span>
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-gray-50">
+                            {d.expenseItems.map((item, i) => (
+                              <tr key={i}>
+                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
+                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* 一時金 */}
+                      {d.oneTime !== 0 && (
+                        <div className="px-4 py-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`text-xs font-semibold ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>一時金</span>
+                            <span className={`text-sm font-bold ${d.oneTime > 0 ? "text-blue-700" : "text-orange-700"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
+                          </div>
+                          <table className="w-full text-xs">
+                            <tbody className="divide-y divide-gray-50">
+                              {d.oneTimeItems.map((item, i) => (
+                                <tr key={i}>
+                                  <td className="py-1 text-gray-500 pl-2">{item.label}</td>
+                                  <td className="py-1 text-right font-medium pl-3" style={{color: item.amount > 0 ? "#1d4ed8" : "#c2410c"}}>{item.amount > 0 ? "+" : ""}{fmtY(item.amount)}円</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {/* 合計 */}
+                      <div className="px-4 py-3 bg-gray-50">
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>年間収支</span>
+                          <span className={`text-sm font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>{balance >= 0 ? "+" : ""}{fmtY(balance)}円</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span className="text-xs font-bold text-violet-700">総資産</span>
+                          <span className="text-sm font-bold text-violet-700">{fmtY(d.assets)}円</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Income profiles */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Wallet size={16} className="text-teal-500" /> 収入プロファイル
+                </h3>
+                <button
+                  onClick={() => { setEditingIncome(null); setShowIncomeModal(true); }}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                >
+                  <Plus size={13} /> 追加
+                </button>
+              </div>
+              {incomeProfiles.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm">
+                  <Wallet size={28} className="mx-auto mb-2 text-gray-200" />
+                  収入を追加するとシミュレーションに反映されます
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...incomeProfiles]
+                    .sort((a, b) => {
+                      const ageA = a.age + ((a.activeFromYear ?? currentYear) - currentYear);
+                      const ageB = b.age + ((b.activeFromYear ?? currentYear) - currentYear);
+                      return ageA - ageB;
+                    })
+                    .map(p => {
+                      const fromYearLabel = p.activeFromYear ? `${p.activeFromYear}年〜` : "現在〜";
+                      return (
+                        <div key={p.id} className="flex items-center justify-between bg-teal-50 rounded-xl px-3 py-2.5 gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
+                            <div className="text-xs text-teal-700 mt-0.5">
+                              {fromYearLabel}（{p.age + ((p.activeFromYear ?? currentYear) - currentYear)}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""}
+                              {" "}年収 ¥{(p.grossAnnual ?? p.grossMonthly * 12).toLocaleString()}
+                              {p.bonusAnnual ? ` うちボーナス ¥${p.bonusAnnual.toLocaleString()}` : ""}
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              onClick={() => { setEditingIncome(p); setShowIncomeModal(true); }}
+                              className="p-1.5 hover:bg-teal-100 rounded-lg transition-colors text-teal-600"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteIncome(p.id)}
+                              className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Life events */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">ライフイベント</h3>
+                <button
+                  onClick={() => setShowTemplateModal(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 transition-colors"
+                >
+                  テンプレートから追加
+                </button>
+              </div>
+
+              {draftEvents.length > 0 && (
+                <div className="mb-3 bg-amber-50 rounded-xl border border-amber-200 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-amber-700">下書きイベント（{draftEvents.length}件）— 確認して確定してください</span>
+                    <button
+                      onClick={handleConfirmAllDrafts}
+                      className="text-xs px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+                    >
+                      全て確定
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {[...draftEvents].sort((a, b) => a.year - b.year).map(e => (
+                      <LifeEventCard key={e.id} event={e}
+                        onEdit={() => {}}
+                        onDelete={() => {}}
+                        onConfirmDraft={handleConfirmDraft}
+                        onDiscardDraft={handleDiscardDraft} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {lifeEvents.length === 0 && draftEvents.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
+                  <MapPin size={32} className="mx-auto mb-3 text-gray-200" />
+                  <p className="text-sm">ライフイベントがありません</p>
+                  <div className="flex gap-3 justify-center mt-2">
+                    <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
+                      className="text-xs text-violet-600 hover:underline">手動で追加する</button>
+                    <span className="text-xs text-gray-300">|</span>
+                    <button onClick={() => setShowTemplateModal(true)}
+                      className="text-xs text-violet-600 hover:underline">テンプレートから追加する</button>
+                  </div>
+                </div>
+              ) : lifeEvents.length > 0 ? (
+                <div className="space-y-2">
+                  {[...lifeEvents].sort((a, b) => a.year - b.year).map(e => (
+                    <LifeEventCard key={e.id} event={e}
+                      onEdit={e => { setEditingLifeEvent(e); setShowLifeEventModal(true); }}
+                      onDelete={handleDeleteLifeEvent} />
+                  ))}
+                </div>
+              ) : null}
             </div>
           </>
         )}
@@ -1572,319 +1881,6 @@ export default function Dashboard() {
           />
         )}
 
-        {/* ── ライフプラン ──────────────────────────────── */}
-        {tab === "ライフプラン" && (
-          <div className="space-y-5">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜90歳）
-              </h3>
-              <p className="text-xs text-gray-400 mb-3">
-                年齢別収入・ローン・保険・ライフイベントを考慮した試算
-                {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
-              </p>
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs text-gray-500 shrink-0">生活費インフレ率</span>
-                <input
-                  type="range" min={0} max={5} step={0.5}
-                  value={inflationRate * 100}
-                  onChange={e => setInflationRate(parseFloat(e.target.value) / 100)}
-                  className="flex-1 accent-violet-500"
-                />
-                <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
-                  {inflationRate === 0 ? "なし" : `${(inflationRate * 100).toFixed(1)}%`}
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
-                <AreaChart data={simData} onClick={(e) => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const ev = e as any;
-                  const pt: SimPoint | undefined = ev?.activePayload?.[0]?.payload
-                    ?? (ev?.activeLabel != null ? simData.find(p => p.year === ev.activeLabel) : undefined);
-                  if (pt) setSelectedSimPoint(prev => prev?.year === pt.year ? null : pt);
-                }} style={{ cursor: "pointer" }}>
-                  <defs>
-                    <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="year" interval={4} height={userProfile && userProfile.familyMembers.length > 0 ? 14 + 11 * (1 + userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 30}
-                    tick={(props: { x: string | number; y: string | number; payload: { value: number } }) => {
-                      const x = Number(props.x);
-                      const y = Number(props.y);
-                      const { payload } = props;
-                      const year = payload.value;
-                      const lines: { key: string; age: number }[] = [];
-                      if (userProfile) {
-                        lines.push({ key: userProfile.displayName ?? "自分", age: year - userProfile.birthYear });
-                        const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
-                        if (spouse) lines.push({ key: "配偶者", age: year - spouse.birthYear });
-                        userProfile.familyMembers.filter(m => m.type === "child").forEach((c, i) => {
-                          if (year >= c.birthYear) lines.push({ key: `子${i + 1}`, age: year - c.birthYear });
-                        });
-                      }
-                      return (
-                        <g transform={`translate(${x},${y})`}>
-                          <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill="#6b7280">{year}年</text>
-                          {lines.map((l, i) => (
-                            <text key={l.key} x={0} y={0} dy={12 + 11 * (i + 1)} textAnchor="middle" fontSize={8} fill="#9ca3af">{l.age}歳</text>
-                          ))}
-                        </g>
-                      );
-                    }}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
-                    v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} />
-                  <Tooltip content={<LifePlanTooltip />} />
-                  {lifeEvents.map(e => (
-                    <ReferenceLine key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
-                      label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
-                  ))}
-                  {loanPlans.map(l => {
-                    const endY = parseInt(loanEndYM(l.startDate, l.termMonths).split("-")[0]);
-                    return <ReferenceLine key={l.id} x={endY} stroke="#22c55e" strokeDasharray="3 3"
-                      label={{ value: `${l.name}完済`, position: "insideTopRight", fontSize: 8, fill: "#15803d" }} />;
-                  })}
-                  {mortgageSimPlan && parseFloat(mortgageSimPlan.principalMan) > 0 && (
-                    <ReferenceLine
-                      x={currentYear + (parseInt(mortgageSimPlan.termYears) || 35)}
-                      stroke="#3b82f6"
-                      strokeDasharray="3 3"
-                      label={{ value: `${mortgageSimPlan.bankName || "住宅ローン"}完済`, position: "insideTopRight", fontSize: 8, fill: "#1d4ed8" }}
-                    />
-                  )}
-                  <Area type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
-                </AreaChart>
-              </ResponsiveContainer>
-
-              <div className="grid grid-cols-4 gap-2 mt-4">
-                {[65, 70, 80, 90].map(age => {
-                  const y = age - selfAge;
-                  const pt = y > 0 ? simData[y] : undefined;
-                  const v = pt?.assets ?? 0;
-                  return (
-                    <div key={age} className="bg-violet-50 rounded-lg p-2 text-center">
-                      <div className="text-xs text-gray-400">{age}歳時点</div>
-                      <div className="text-xs font-bold text-violet-700">
-                        {y <= 0 ? "−" : v >= 100000000 ? `${(v / 100000000).toFixed(1)}億` : `${Math.round(v / 10000)}万`}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-gray-400 mt-2 text-center">グラフをタップすると年別の収支明細が表示されます</p>
-
-              {/* 年別収支明細 */}
-              {selectedSimPoint && (() => {
-                const d = selectedSimPoint;
-                const fmtM = (v: number) => `¥${Math.round(v).toLocaleString()}`;
-                const fmtY = (v: number) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000).toLocaleString()}万`;
-                const balance = d.annualIncome - d.annualExpense;
-                const selfAgeAtYear = userProfile ? d.year - userProfile.birthYear : null;
-                return (
-                  <div className="mt-4 border border-violet-200 rounded-xl overflow-hidden">
-                    <div className="bg-violet-50 px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-gray-800 text-sm">{d.year}年</span>
-                        {selfAgeAtYear != null && <span className="ml-2 text-xs text-gray-500">（{selfAgeAtYear}歳）</span>}
-                        {d.label && <span className="ml-2 text-xs text-violet-600 bg-violet-100 rounded px-1.5 py-0.5">{d.label}</span>}
-                      </div>
-                      <button onClick={() => setSelectedSimPoint(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕ 閉じる</button>
-                    </div>
-                    <div className="divide-y divide-gray-50">
-                      {/* 収入 */}
-                      <div className="px-4 py-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-semibold text-teal-700">収入（年間）</span>
-                          <span className="text-sm font-bold text-teal-700">+{fmtY(d.annualIncome)}円</span>
-                        </div>
-                        <table className="w-full text-xs">
-                          <tbody className="divide-y divide-gray-50">
-                            {d.incomeItems.map((item, i) => (
-                              <tr key={i}>
-                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
-                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
-                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {/* 支出 */}
-                      <div className="px-4 py-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-semibold text-rose-600">支出（年間）</span>
-                          <span className="text-sm font-bold text-rose-600">−{fmtY(d.annualExpense)}円</span>
-                        </div>
-                        <table className="w-full text-xs">
-                          <tbody className="divide-y divide-gray-50">
-                            {d.expenseItems.map((item, i) => (
-                              <tr key={i}>
-                                <td className="py-1 text-gray-500 pl-2">{item.label}</td>
-                                <td className="py-1 text-right text-gray-600">{fmtM(item.monthly)}<span className="text-gray-400">/月</span></td>
-                                <td className="py-1 text-right text-gray-500 pl-3">{fmtY(item.monthly * 12)}円/年</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {/* 一時金 */}
-                      {d.oneTime !== 0 && (
-                        <div className="px-4 py-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className={`text-xs font-semibold ${d.oneTime > 0 ? "text-blue-600" : "text-orange-600"}`}>一時金</span>
-                            <span className={`text-sm font-bold ${d.oneTime > 0 ? "text-blue-700" : "text-orange-700"}`}>{d.oneTime > 0 ? "+" : ""}{fmtY(d.oneTime)}円</span>
-                          </div>
-                          <table className="w-full text-xs">
-                            <tbody className="divide-y divide-gray-50">
-                              {d.oneTimeItems.map((item, i) => (
-                                <tr key={i}>
-                                  <td className="py-1 text-gray-500 pl-2">{item.label}</td>
-                                  <td className="py-1 text-right font-medium pl-3" style={{color: item.amount > 0 ? "#1d4ed8" : "#c2410c"}}>{item.amount > 0 ? "+" : ""}{fmtY(item.amount)}円</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      {/* 合計 */}
-                      <div className="px-4 py-3 bg-gray-50">
-                        <div className="flex justify-between items-center">
-                          <span className={`text-xs font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>年間収支</span>
-                          <span className={`text-sm font-bold ${balance >= 0 ? "text-green-700" : "text-red-600"}`}>{balance >= 0 ? "+" : ""}{fmtY(balance)}円</span>
-                        </div>
-                        <div className="flex justify-between items-center mt-1.5">
-                          <span className="text-xs font-bold text-violet-700">総資産</span>
-                          <span className="text-sm font-bold text-violet-700">{fmtY(d.assets)}円</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Income profiles */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <Wallet size={16} className="text-teal-500" /> 収入プロファイル
-                </h3>
-                <button
-                  onClick={() => { setEditingIncome(null); setShowIncomeModal(true); }}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors"
-                >
-                  <Plus size={13} /> 追加
-                </button>
-              </div>
-              {incomeProfiles.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-sm">
-                  <Wallet size={28} className="mx-auto mb-2 text-gray-200" />
-                  収入を追加するとシミュレーションに反映されます
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[...incomeProfiles]
-                    .sort((a, b) => {
-                      const ageA = a.age + ((a.activeFromYear ?? currentYear) - currentYear);
-                      const ageB = b.age + ((b.activeFromYear ?? currentYear) - currentYear);
-                      return ageA - ageB;
-                    })
-                    .map(p => {
-                      const fromYearLabel = p.activeFromYear ? `${p.activeFromYear}年〜` : "現在〜";
-                      return (
-                        <div key={p.id} className="flex items-center justify-between bg-teal-50 rounded-xl px-3 py-2.5 gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
-                            <div className="text-xs text-teal-700 mt-0.5">
-                              {fromYearLabel}（{p.age + ((p.activeFromYear ?? currentYear) - currentYear)}歳〜）{p.activeUntilAge ? `${p.activeUntilAge}歳まで` : ""}
-                              {" "}年収 ¥{(p.grossAnnual ?? p.grossMonthly * 12).toLocaleString()}
-                              {p.bonusAnnual ? ` うちボーナス ¥${p.bonusAnnual.toLocaleString()}` : ""}
-                            </div>
-                          </div>
-                          <div className="flex gap-1.5 shrink-0">
-                            <button
-                              onClick={() => { setEditingIncome(p); setShowIncomeModal(true); }}
-                              className="p-1.5 hover:bg-teal-100 rounded-lg transition-colors text-teal-600"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteIncome(p.id)}
-                              className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-red-400"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-
-            {/* Life events */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700">ライフイベント</h3>
-                <button
-                  onClick={() => setShowTemplateModal(true)}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 transition-colors"
-                >
-                  テンプレートから追加
-                </button>
-              </div>
-
-              {draftEvents.length > 0 && (
-                <div className="mb-3 bg-amber-50 rounded-xl border border-amber-200 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-amber-700">下書きイベント（{draftEvents.length}件）— 確認して確定してください</span>
-                    <button
-                      onClick={handleConfirmAllDrafts}
-                      className="text-xs px-3 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors"
-                    >
-                      全て確定
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {[...draftEvents].sort((a, b) => a.year - b.year).map(e => (
-                      <LifeEventCard key={e.id} event={e}
-                        onEdit={() => {}}
-                        onDelete={() => {}}
-                        onConfirmDraft={handleConfirmDraft}
-                        onDiscardDraft={handleDiscardDraft} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {lifeEvents.length === 0 && draftEvents.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400 shadow-sm">
-                  <MapPin size={32} className="mx-auto mb-3 text-gray-200" />
-                  <p className="text-sm">ライフイベントがありません</p>
-                  <div className="flex gap-3 justify-center mt-2">
-                    <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
-                      className="text-xs text-violet-600 hover:underline">手動で追加する</button>
-                    <span className="text-xs text-gray-300">|</span>
-                    <button onClick={() => setShowTemplateModal(true)}
-                      className="text-xs text-violet-600 hover:underline">テンプレートから追加する</button>
-                  </div>
-                </div>
-              ) : lifeEvents.length > 0 ? (
-                <div className="space-y-2">
-                  {[...lifeEvents].sort((a, b) => a.year - b.year).map(e => (
-                    <LifeEventCard key={e.id} event={e}
-                      onEdit={e => { setEditingLifeEvent(e); setShowLifeEventModal(true); }}
-                      onDelete={handleDeleteLifeEvent} />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Modals */}
