@@ -440,6 +440,28 @@ export function calcPropertyTaxForYear(e: PropertyTaxEntry, year: number): numbe
   return calcPropertyTax(preBuild).total;
 }
 
+// 投資物件
+export type InvestmentPropertyType = "区分マンション" | "一棟マンション" | "戸建て" | "その他";
+
+export interface InvestmentProperty {
+  id: string;
+  name: string;
+  location?: string;
+  propertyType: InvestmentPropertyType;
+  memberId?: "self" | "spouse";
+  purchasePriceMan: number;    // 購入価格（万円）
+  purchaseDate?: string;       // "YYYY-MM-DD"
+  loanBalanceMan?: number;     // 借入残高（万円）
+  loanMonthlyPayment?: number; // 月返済額（円）
+  monthlyRent: number;         // 月額家賃収入（円）
+  monthlyManagementFee?: number;   // 管理費（円/月）
+  monthlyRepairReserve?: number;   // 修繕積立金（円/月）
+  annualPropertyTax?: number;      // 固定資産税（円/年）
+  monthlyOtherCosts?: number;      // その他コスト（円/月）
+  note?: string;
+  updatedAt: string;
+}
+
 // ライフイベント
 export type LifeEventType =
   | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";

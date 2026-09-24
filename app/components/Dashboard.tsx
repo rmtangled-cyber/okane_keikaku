@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye, PiggyBank,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye, PiggyBank, X,
 } from "lucide-react";
 
 import {
@@ -19,6 +19,7 @@ import {
   MortgageSimPlan, MortgageProperty, RateScenarioEntry,
   UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
   SavingsAccount, SavingsAccountType,
+  InvestmentProperty, InvestmentPropertyType,
 } from "@/lib/types";
 import { applyMonthlyContributions } from "@/lib/autoContrib";
 import {
@@ -29,6 +30,7 @@ import {
   getStocks, saveStocks, loadStocks,
   getFunds, saveFunds, loadFunds,
   getSavingsAccounts, saveSavingsAccounts, loadSavingsAccounts,
+  getInvestmentProperties, saveInvestmentProperties, loadInvestmentProperties,
   getExpenses, saveExpenses, loadExpenses,
   getIncomeProfiles, loadIncomeProfiles, upsertIncomeProfile, deleteIncomeProfileById,
   getLifeEvents, saveLifeEvents, loadLifeEvents,
@@ -86,7 +88,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "貯金" | "投資信託" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "貯金" | "投資信託" | "投資物件" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
 type TabGroup = "トップ" | "資産" | "生活費" | "マイホーム" | "設定";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
@@ -296,6 +298,7 @@ function simulate(
   mortgageProperties?: MortgageProperty[],
   simSharedBaseRate?: number,
   simRateScenario?: RateScenarioEntry[],
+  investmentProperties?: InvestmentProperty[],
 ): SimPoint[] {
   const points: SimPoint[] = [];
   let assets = startAssets;
@@ -385,7 +388,14 @@ function simulate(
     const totalTakeHomeMonthly = takeHome + bonusTakeHome / 12;
     const propTaxAnnual = (propertyTaxEntries ?? []).reduce((s, e) => s + calcPropertyTaxForYear(e, year), 0);
     const propTax = propTaxAnnual / 12;
-    const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment - propTax + cumulativeMonthly;
+
+    // 投資物件キャッシュフロー
+    const investmentRentMonthly = (investmentProperties ?? []).reduce((s, p) => s + p.monthlyRent, 0);
+    const investmentCostMonthly = (investmentProperties ?? []).reduce((s, p) =>
+      s + (p.monthlyManagementFee ?? 0) + (p.monthlyRepairReserve ?? 0)
+        + (p.annualPropertyTax ?? 0) / 12 + (p.monthlyOtherCosts ?? 0) + (p.loanMonthlyPayment ?? 0), 0);
+
+    const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment - propTax + cumulativeMonthly + investmentRentMonthly - investmentCostMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
 
@@ -409,17 +419,20 @@ function simulate(
     if (fundMonthly > 0) expenseItems.push({ label: "投資信託積立", monthly: fundMonthly });
     if (mortgagePayment > 0) expenseItems.push({ label: "住宅ローン", monthly: mortgagePayment });
     if (propTaxAnnual > 0) expenseItems.push({ label: "固定資産税", monthly: propTaxAnnual / 12 });
+    if (investmentCostMonthly > 0) expenseItems.push({ label: "投資物件コスト", monthly: investmentCostMonthly });
     // 継続的支出増のライフイベントを個別に展開
     lifeEvents
       .filter(e => e.monthlyAmountChange < 0 && e.year <= year && (e.endYear === undefined || e.endYear >= year))
       .forEach(e => expenseItems.push({ label: e.title, monthly: Math.abs(e.monthlyAmountChange) }));
 
+    if (investmentRentMonthly > 0) incomeItems.push({ label: "投資物件家賃", monthly: investmentRentMonthly });
+
     points.push({
       year,
       assets: Math.round(assets),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
-      annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly)) * 12),
-      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + fundMonthly + Math.max(0, -cumulativeMonthly)) * 12),
+      annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly) + investmentRentMonthly) * 12),
+      annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + fundMonthly + investmentCostMonthly + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
       incomeItems,
       expenseItems,
@@ -446,6 +459,9 @@ export default function Dashboard() {
   const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
   const [showSavingsModal, setShowSavingsModal] = useState(false);
   const [editingSavings, setEditingSavings] = useState<SavingsAccount | null>(null);
+  const [investmentProperties, setInvestmentProperties] = useState<InvestmentProperty[]>([]);
+  const [showInvestmentPropertyModal, setShowInvestmentPropertyModal] = useState(false);
+  const [editingInvestmentProperty, setEditingInvestmentProperty] = useState<InvestmentProperty | null>(null);
   const [mortgageSimPlan, setMortgageSimPlan] = useState<MortgageSimPlan | null>(null);
   const [mortgageProperties, setMortgageProperties] = useState<MortgageProperty[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -455,7 +471,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "投資物件", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -473,6 +489,7 @@ export default function Dashboard() {
       { key: "株式",     label: "株式",     icon: <TrendingUp size={13} /> },
       { key: "貯金",     label: "貯金",     icon: <PiggyBank size={13} /> },
       { key: "投資信託", label: "投資信託", icon: <Layers size={13} /> },
+      { key: "投資物件", label: "投資物件", icon: <Building2 size={13} /> },
     ]},
     { group: "生活費", icon: <BookOpen size={14} />, tabs: [
       { key: "生活費", label: "生活費", icon: <BookOpen size={13} /> },
@@ -547,6 +564,7 @@ export default function Dashboard() {
     loadSpendingRecords().then(setSpendingRecords);
     loadLoanPlans().then(setLoanPlans);
     loadSavingsAccounts().then(setSavingsAccounts);
+    loadInvestmentProperties().then(setInvestmentProperties);
     loadMortgageSimPlan().then(plan => { if (plan) setMortgageSimPlan(plan); });
     loadMortgageProperties().then(setMortgageProperties);
     loadUserProfile().then(p => { if (p) setUserProfile(p); });
@@ -683,6 +701,7 @@ export default function Dashboard() {
     mortgageProperties,
     parseFloat(mortgageSimPlan?.sharedBaseRate ?? "2.475") || 2.475,
     mortgageSimPlan?.rateScenario ?? [],
+    investmentProperties,
   );
 
   // ── CRUD callbacks ────────────────────────────────────
@@ -944,6 +963,10 @@ export default function Dashboard() {
             </button>
           </div>
         );
+      case "投資物件":
+        return <button onClick={() => { setEditingInvestmentProperty(null); setShowInvestmentPropertyModal(true); }}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <Plus size={15} /> 物件追加</button>;
       case "概要":
         return <button onClick={() => { setEditingLifeEvent(null); setShowLifeEventModal(true); }}
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
@@ -1722,6 +1745,126 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── 投資物件 ──────────────────────────────────── */}
+        {tab === "投資物件" && (
+          <div className="space-y-4">
+            {/* サマリバー */}
+            {investmentProperties.length > 0 && (() => {
+              const totalRent = investmentProperties.reduce((s, p) => s + p.monthlyRent, 0);
+              const totalCost = investmentProperties.reduce((s, p) =>
+                s + (p.monthlyManagementFee ?? 0) + (p.monthlyRepairReserve ?? 0)
+                  + (p.annualPropertyTax ?? 0) / 12 + (p.monthlyOtherCosts ?? 0) + (p.loanMonthlyPayment ?? 0), 0);
+              const monthlyCF = totalRent - totalCost;
+              return (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
+                  <div><div className="text-xs text-gray-400">物件数</div><div className="font-bold text-gray-900">{investmentProperties.length}件</div></div>
+                  <div><div className="text-xs text-gray-400">月額家賃収入</div><div className="font-bold text-teal-600">¥{totalRent.toLocaleString()}</div></div>
+                  <div><div className="text-xs text-gray-400">月額コスト合計</div><div className="font-bold text-rose-500">¥{Math.round(totalCost).toLocaleString()}</div></div>
+                  <div className="border-l border-gray-100 pl-4">
+                    <div className="text-xs text-gray-400">月次CF</div>
+                    <div className={`font-bold ${monthlyCF >= 0 ? "text-green-600" : "text-red-600"}`}>{monthlyCF >= 0 ? "+" : ""}¥{Math.round(monthlyCF).toLocaleString()}</div>
+                  </div>
+                  <div><div className="text-xs text-gray-400">年次CF</div><div className={`font-bold ${monthlyCF >= 0 ? "text-green-600" : "text-red-600"}`}>{monthlyCF * 12 >= 0 ? "+" : ""}¥{Math.round(monthlyCF * 12).toLocaleString()}</div></div>
+                </div>
+              );
+            })()}
+
+            {/* 物件カード一覧 */}
+            {investmentProperties.length === 0 ? (
+              <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center text-gray-400 shadow-sm">
+                <Building2 size={32} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm">投資物件がありません</p>
+                {!viewerOwnerUid && (
+                  <button onClick={() => { setEditingInvestmentProperty(null); setShowInvestmentPropertyModal(true); }}
+                    className="mt-3 text-xs text-blue-600 hover:underline">最初の物件を追加する</button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {investmentProperties.map(prop => {
+                  const monthlyCost = (prop.monthlyManagementFee ?? 0) + (prop.monthlyRepairReserve ?? 0)
+                    + (prop.annualPropertyTax ?? 0) / 12 + (prop.monthlyOtherCosts ?? 0) + (prop.loanMonthlyPayment ?? 0);
+                  const monthlyCF = prop.monthlyRent - monthlyCost;
+                  const surfaceYield = prop.purchasePriceMan > 0
+                    ? (prop.monthlyRent * 12) / (prop.purchasePriceMan * 10000) * 100 : 0;
+                  const annualNetIncome = prop.monthlyRent * 12
+                    - ((prop.monthlyManagementFee ?? 0) + (prop.monthlyRepairReserve ?? 0) + (prop.monthlyOtherCosts ?? 0)) * 12
+                    - (prop.annualPropertyTax ?? 0);
+                  const netYield = prop.purchasePriceMan > 0
+                    ? annualNetIncome / (prop.purchasePriceMan * 10000) * 100 : 0;
+                  const equity = prop.purchasePriceMan * 10000 - (prop.loanBalanceMan ?? 0) * 10000;
+                  return (
+                    <div key={prop.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      {/* ヘッダー */}
+                      <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-gray-50">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{prop.name}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">{prop.propertyType}</span>
+                            {prop.memberId && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                {memberOptions.find(o => o.id === prop.memberId)?.label ?? prop.memberId}
+                              </span>
+                            )}
+                          </div>
+                          {prop.location && <div className="text-xs text-gray-400 mt-0.5">{prop.location}</div>}
+                        </div>
+                        {!viewerOwnerUid && (
+                          <div className="flex gap-1.5 shrink-0">
+                            <button onClick={() => { setEditingInvestmentProperty(prop); setShowInvestmentPropertyModal(true); }}
+                              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400"><Pencil size={14} /></button>
+                            <button onClick={() => {
+                              if (!confirm(`「${prop.name}」を削除しますか？`)) return;
+                              const updated = investmentProperties.filter(p => p.id !== prop.id);
+                              setInvestmentProperties(updated);
+                              saveInvestmentProperties(updated);
+                            }} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors text-red-400"><Trash2 size={14} /></button>
+                          </div>
+                        )}
+                      </div>
+                      {/* 数値グリッド */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-50">
+                        <div className="bg-white px-4 py-3">
+                          <div className="text-xs text-gray-400">購入価格</div>
+                          <div className="text-sm font-bold text-gray-800">{prop.purchasePriceMan.toLocaleString()}万円</div>
+                          {prop.loanBalanceMan != null && (
+                            <div className="text-xs text-gray-400 mt-0.5">残債 {prop.loanBalanceMan.toLocaleString()}万円</div>
+                          )}
+                        </div>
+                        <div className="bg-white px-4 py-3">
+                          <div className="text-xs text-gray-400">エクイティ</div>
+                          <div className="text-sm font-bold text-gray-800">{(equity / 10000).toLocaleString()}万円</div>
+                        </div>
+                        <div className="bg-white px-4 py-3">
+                          <div className="text-xs text-gray-400">表面利回り</div>
+                          <div className={`text-sm font-bold ${surfaceYield >= 5 ? "text-green-600" : "text-gray-700"}`}>{surfaceYield.toFixed(2)}%</div>
+                        </div>
+                        <div className="bg-white px-4 py-3">
+                          <div className="text-xs text-gray-400">実質利回り</div>
+                          <div className={`text-sm font-bold ${netYield >= 3 ? "text-teal-600" : "text-gray-700"}`}>{netYield.toFixed(2)}%</div>
+                        </div>
+                      </div>
+                      {/* 収支詳細 */}
+                      <div className="px-5 py-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500">
+                        <span>家賃 <strong className="text-teal-600">+¥{prop.monthlyRent.toLocaleString()}</strong>/月</span>
+                        {(prop.loanMonthlyPayment ?? 0) > 0 && <span>ローン返済 <strong className="text-gray-700">¥{prop.loanMonthlyPayment!.toLocaleString()}</strong>/月</span>}
+                        {(prop.monthlyManagementFee ?? 0) > 0 && <span>管理費 ¥{prop.monthlyManagementFee!.toLocaleString()}/月</span>}
+                        {(prop.monthlyRepairReserve ?? 0) > 0 && <span>修繕積立 ¥{prop.monthlyRepairReserve!.toLocaleString()}/月</span>}
+                        {(prop.annualPropertyTax ?? 0) > 0 && <span>固定資産税 ¥{prop.annualPropertyTax!.toLocaleString()}/年</span>}
+                        {(prop.monthlyOtherCosts ?? 0) > 0 && <span>その他 ¥{prop.monthlyOtherCosts!.toLocaleString()}/月</span>}
+                        <span className={`font-semibold ml-auto ${monthlyCF >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          月次CF {monthlyCF >= 0 ? "+" : ""}¥{Math.round(monthlyCF).toLocaleString()}
+                        </span>
+                      </div>
+                      {prop.note && <div className="px-5 pb-3 text-xs text-gray-400">{prop.note}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── 生活費 ────────────────────────────────────── */}
         {tab === "生活費" && (
           <div className="space-y-5">
@@ -1896,6 +2039,22 @@ export default function Dashboard() {
       {showSpendingModal && <SpendingModal record={editingSpending} defaultDate={`${selectedMonth}-01`} onSave={handleSaveSpending} onClose={() => { setShowSpendingModal(false); setEditingSpending(null); }} />}
       {showLoanModal && <LoanModal loan={editingLoan} onSave={handleSaveLoan} onClose={() => { setShowLoanModal(false); setEditingLoan(null); }} />}
       {showPropertyTaxModal && <PropertyTaxModal key={editingPropertyTax?.id ?? "new"} entry={editingPropertyTax} onSave={handleSavePropertyTax} onClose={() => { setShowPropertyTaxModal(false); setEditingPropertyTax(null); }} />}
+      {showInvestmentPropertyModal && (
+        <InvestmentPropertyModal
+          property={editingInvestmentProperty}
+          memberOptions={memberOptions}
+          onClose={() => { setShowInvestmentPropertyModal(false); setEditingInvestmentProperty(null); }}
+          onSave={prop => {
+            const updated = editingInvestmentProperty
+              ? investmentProperties.map(p => p.id === editingInvestmentProperty.id ? prop : p)
+              : [...investmentProperties, prop];
+            setInvestmentProperties(updated);
+            saveInvestmentProperties(updated);
+            setShowInvestmentPropertyModal(false);
+            setEditingInvestmentProperty(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1998,6 +2157,181 @@ function SavingsAccountModal({ account, onClose, onSave }: {
             </button>
             <button type="submit"
               className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
+              保存
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── InvestmentPropertyModal ───────────────────────────────────────────────────
+
+const INVESTMENT_PROPERTY_TYPES: InvestmentPropertyType[] = ["区分マンション", "一棟マンション", "戸建て", "その他"];
+
+function InvestmentPropertyModal({ property, memberOptions, onClose, onSave }: {
+  property: InvestmentProperty | null;
+  memberOptions: { id: "self" | "spouse"; label: string }[];
+  onClose: () => void;
+  onSave: (p: InvestmentProperty) => void;
+}) {
+  const [name, setName] = useState(property?.name ?? "");
+  const [location, setLocation] = useState(property?.location ?? "");
+  const [propertyType, setPropertyType] = useState<InvestmentPropertyType>(property?.propertyType ?? "区分マンション");
+  const [memberId, setMemberId] = useState<"self" | "spouse" | "">(property?.memberId ?? "");
+  const [purchasePriceMan, setPurchasePriceMan] = useState(property ? String(property.purchasePriceMan) : "");
+  const [purchaseDate, setPurchaseDate] = useState(property?.purchaseDate ?? "");
+  const [loanBalanceMan, setLoanBalanceMan] = useState(property?.loanBalanceMan != null ? String(property.loanBalanceMan) : "");
+  const [loanMonthlyPayment, setLoanMonthlyPayment] = useState(property?.loanMonthlyPayment != null ? String(property.loanMonthlyPayment) : "");
+  const [monthlyRent, setMonthlyRent] = useState(property ? String(property.monthlyRent) : "");
+  const [monthlyManagementFee, setMonthlyManagementFee] = useState(property?.monthlyManagementFee != null ? String(property.monthlyManagementFee) : "");
+  const [monthlyRepairReserve, setMonthlyRepairReserve] = useState(property?.monthlyRepairReserve != null ? String(property.monthlyRepairReserve) : "");
+  const [annualPropertyTax, setAnnualPropertyTax] = useState(property?.annualPropertyTax != null ? String(property.annualPropertyTax) : "");
+  const [monthlyOtherCosts, setMonthlyOtherCosts] = useState(property?.monthlyOtherCosts != null ? String(property.monthlyOtherCosts) : "");
+  const [note, setNote] = useState(property?.note ?? "");
+
+  const num = (s: string) => s === "" ? undefined : parseFloat(s) || 0;
+  const req = (s: string) => parseFloat(s) || 0;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const price = req(purchasePriceMan);
+    const rent = req(monthlyRent);
+    if (!name || price <= 0 || rent < 0) return;
+    onSave({
+      id: property?.id ?? crypto.randomUUID(),
+      name: name.trim(),
+      location: location.trim() || undefined,
+      propertyType,
+      memberId: memberId || undefined,
+      purchasePriceMan: price,
+      purchaseDate: purchaseDate || undefined,
+      loanBalanceMan: num(loanBalanceMan),
+      loanMonthlyPayment: num(loanMonthlyPayment),
+      monthlyRent: rent,
+      monthlyManagementFee: num(monthlyManagementFee),
+      monthlyRepairReserve: num(monthlyRepairReserve),
+      annualPropertyTax: num(annualPropertyTax),
+      monthlyOtherCosts: num(monthlyOtherCosts),
+      note: note.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold text-gray-900">{property ? "物件を編集" : "投資物件を追加"}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">物件名</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="〇〇マンション 301号室"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">種別</label>
+              <select value={propertyType} onChange={e => setPropertyType(e.target.value as InvestmentPropertyType)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {INVESTMENT_PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            {memberOptions.length > 1 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">名義人</label>
+                <select value={memberId} onChange={e => setMemberId(e.target.value as "self" | "spouse" | "")}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">未設定</option>
+                  {memberOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">所在地（任意）</label>
+            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="東京都〇〇区"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">購入価格（万円）</label>
+              <input type="number" value={purchasePriceMan} onChange={e => setPurchasePriceMan(e.target.value)} placeholder="2000" min={0}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">購入日（任意）</label>
+              <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-semibold text-gray-500 mb-3">ローン</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">借入残高（万円）</label>
+                <input type="number" value={loanBalanceMan} onChange={e => setLoanBalanceMan(e.target.value)} placeholder="1500" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">月返済額（円）</label>
+                <input type="number" value={loanMonthlyPayment} onChange={e => setLoanMonthlyPayment(e.target.value)} placeholder="60000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-semibold text-gray-500 mb-3">収支</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">月額家賃収入（円）</label>
+                <input type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} placeholder="80000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">管理費（円/月）</label>
+                <input type="number" value={monthlyManagementFee} onChange={e => setMonthlyManagementFee(e.target.value)} placeholder="5000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">修繕積立金（円/月）</label>
+                <input type="number" value={monthlyRepairReserve} onChange={e => setMonthlyRepairReserve(e.target.value)} placeholder="3000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">固定資産税（円/年）</label>
+                <input type="number" value={annualPropertyTax} onChange={e => setAnnualPropertyTax(e.target.value)} placeholder="80000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">その他コスト（円/月）</label>
+                <input type="number" value={monthlyOtherCosts} onChange={e => setMonthlyOtherCosts(e.target.value)} placeholder="2000" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">メモ（任意）</label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="備考など"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div className="flex gap-3 mt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              キャンセル
+            </button>
+            <button type="submit"
+              className="flex-1 py-2.5 bg-blue-600 rounded-xl text-sm font-medium text-white hover:bg-blue-700 transition-colors">
               保存
             </button>
           </div>
