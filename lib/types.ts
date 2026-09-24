@@ -79,6 +79,21 @@ export interface Asset {
   updatedAt: string;
 }
 
+// 貯金口座
+export type SavingsAccountType = "普通" | "定期";
+
+export interface SavingsAccount {
+  id: string;
+  bankName: string;       // 金融機関名
+  accountName: string;    // 口座名（例: 給与口座）
+  balance: number;        // 残高（円）
+  interestRate: number;   // 金利（%）
+  accountType: SavingsAccountType;
+  memberId?: "self" | "spouse";
+  note?: string;
+  updatedAt: string;
+}
+
 export interface Goal {
   id: string;
   title: string;

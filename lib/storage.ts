@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount } from "./types";
 
 // ── Viewer mode state ─────────────────────────────────────────────────────────
 
@@ -78,6 +78,15 @@ export function saveFunds(items: FundHolding[]): void {
 }
 export async function loadFunds(): Promise<FundHolding[]> {
   try { return await fsGetAll<FundHolding>("funds"); } catch { return []; }
+}
+
+// Savings Accounts
+export function getSavingsAccounts(): SavingsAccount[] { return []; }
+export function saveSavingsAccounts(items: SavingsAccount[]): void {
+  fsSaveAll("savings", items).catch(console.error);
+}
+export async function loadSavingsAccounts(): Promise<SavingsAccount[]> {
+  try { return await fsGetAll<SavingsAccount>("savings"); } catch { return []; }
 }
 
 // Goals

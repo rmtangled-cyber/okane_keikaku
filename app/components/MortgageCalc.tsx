@@ -23,7 +23,7 @@ interface SimPeriod { label: string; payment: number; capped: boolean; rateAtSta
 interface SimResult {
   periods: SimPeriod[];
   chartPoints: { year: number; principal: number; unpaidInterest: number; total: number }[];
-  annualBreakdown: { year: number; interest: number; principal: number }[];
+  annualBreakdown: { year: number; interest: number; principal: number; bonus: number }[];
   finalLumpSum: number;
   totalPaid: number;
   totalExtra: number;
@@ -63,6 +63,7 @@ function simulateCustom(
   const annualBreakdown: SimResult["annualBreakdown"] = [];
   let annualInterestAcc = 0;
   let annualPrincipalAcc = 0;
+  let annualBonusAcc = 0;
   const periods: SimPeriod[] = [];
   let periodStartYear = 1;
   let periodCapped = false;
@@ -105,6 +106,7 @@ function simulateCustom(
       balance = Math.max(0, balance - applied);
       totalPaid += applied;  // ボーナス返済は通常返済の一部（繰上げではない）
       annualPrincipalAcc += applied;
+      annualBonusAcc += applied;
     }
 
     const balanceBeforeMonthly = balance;
@@ -132,9 +134,11 @@ function simulateCustom(
         year: m / 12,
         interest: Math.round(annualInterestAcc),
         principal: Math.round(annualPrincipalAcc),
+        bonus: Math.round(annualBonusAcc),
       });
       annualInterestAcc = 0;
       annualPrincipalAcc = 0;
+      annualBonusAcc = 0;
     }
   }
 
@@ -162,12 +166,13 @@ const fmt = (v: number) =>
 
 function AnnualBreakdownTooltip({ active, payload, label }: {
   active?: boolean;
-  payload?: { name: string; value: number }[];
+  payload?: { name: string; value: number; payload?: { bonus?: number } }[];
   label?: string | number;
 }) {
   if (!active || !payload?.length) return null;
   const interest = payload.find(p => p.name === "利息")?.value ?? 0;
   const principal = payload.find(p => p.name === "元金返済")?.value ?? 0;
+  const bonus = payload[0]?.payload?.bonus ?? 0;
   const annual = interest + principal;
   const monthly = Math.round(annual / 12);
   return (
@@ -191,6 +196,12 @@ function AnnualBreakdownTooltip({ active, payload, label }: {
             <span className="text-blue-500">元金返済</span>
             <span className="text-blue-600">{fmt(principal)}</span>
           </div>
+          {bonus > 0 && (
+            <div className="flex justify-between gap-4">
+              <span className="text-violet-500">うちボーナス</span>
+              <span className="text-violet-600">{fmt(bonus)}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -377,7 +388,7 @@ export default function MortgageCalc() {
       let periods: SimPeriod[] = [];
 
       const allChartPoints = new Map<number, { principal: number; unpaidInterest: number; total: number }>();
-      const allAnnual = new Map<number, { interest: number; principal: number }>();
+      const allAnnual = new Map<number, { interest: number; principal: number; bonus: number }>();
       let totalPaid = 0;
       let totalExtra = 0;
       let totalInterest = 0;
@@ -504,8 +515,8 @@ export default function MortgageCalc() {
         }
         for (const ab of propSim.annualBreakdown) {
           const absYear = offsetYears + ab.year;
-          const ex = allAnnual.get(absYear) ?? { interest: 0, principal: 0 };
-          allAnnual.set(absYear, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal });
+          const ex = allAnnual.get(absYear) ?? { interest: 0, principal: 0, bonus: 0 };
+          allAnnual.set(absYear, { interest: ex.interest + ab.interest, principal: ex.principal + ab.principal, bonus: ex.bonus + (ab.bonus ?? 0) });
         }
       }
 
@@ -536,12 +547,6 @@ export default function MortgageCalc() {
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, JSON.stringify(borrowerOptions), sharedBaseRate, JSON.stringify(rateScenario)]);
-
-  const burdenColor = (ratio: number) => {
-    if (ratio < 25) return "text-green-700 bg-green-50";
-    if (ratio < 35) return "text-yellow-700 bg-yellow-50";
-    return "text-red-700 bg-red-50";
-  };
 
   const totalPrincipal = drawdowns.reduce((s, d) => s + d.amountMan, 0);
   const hasSims = borrowerSims.length > 0;
@@ -914,17 +919,6 @@ export default function MortgageCalc() {
                         <span className="text-xs text-gray-500">初期月額返済</span>
                         <div className="font-bold text-xl text-gray-900">¥{Math.round(data.initialMonthly).toLocaleString()}</div>
                       </div>
-                      {(() => {
-                        const inc = (parseFloat(borrowerIncomes[data.borrowerId] || "") || 0) * 10000;
-                        return inc > 0 && data.initialMonthly > 0 ? (
-                          <div>
-                            <span className="text-xs text-gray-500">返済負担率</span>
-                            <div className={`inline-flex font-bold text-sm px-2 py-0.5 rounded-lg mt-0.5 ${burdenColor((data.initialMonthly / inc) * 100)}`}>
-                              {((data.initialMonthly / inc) * 100).toFixed(1)}%
-                            </div>
-                          </div>
-                        ) : null;
-                      })()}
                     </div>
                   </div>
                   {isExpanded ? <ChevronUp size={16} className="text-indigo-400 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-indigo-400 shrink-0 mt-1" />}
@@ -948,17 +942,6 @@ export default function MortgageCalc() {
                   })}
                 </div>
               </button>
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-indigo-100/50" onClick={e => e.stopPropagation()}>
-                <label className="text-xs text-gray-500 shrink-0">月収</label>
-                <input
-                  type="number"
-                  value={borrowerIncomes[data.borrowerId] ?? ""}
-                  onChange={e => setBorrowerIncomes(prev => ({ ...prev, [data.borrowerId]: e.target.value }))}
-                  placeholder="40"
-                  className="w-24 border border-indigo-100 rounded-lg px-2 py-1.5 text-xs text-gray-900 bg-white/70 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-                <span className="text-xs text-gray-500">万円 / 月</span>
-              </div>
             </div>
 
             {isExpanded && (
