@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount, InvestmentProperty } from "./types";
 
 // ── Viewer mode state ─────────────────────────────────────────────────────────
 
@@ -197,6 +197,15 @@ export function saveLifeEvents(items: LifeEvent[]): void {
 }
 export async function loadLifeEvents(): Promise<LifeEvent[]> {
   try { return await fsGetAll<LifeEvent>("lifeEvents"); } catch { return []; }
+}
+
+// Investment Properties
+export function getInvestmentProperties(): InvestmentProperty[] { return []; }
+export function saveInvestmentProperties(items: InvestmentProperty[]): void {
+  fsSaveAll("investmentProperties", items).catch(console.error);
+}
+export async function loadInvestmentProperties(): Promise<InvestmentProperty[]> {
+  try { return await fsGetAll<InvestmentProperty>("investmentProperties"); } catch { return []; }
 }
 
 // Property Tax Entries
