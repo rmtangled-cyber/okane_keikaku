@@ -1082,7 +1082,7 @@ export default function Dashboard() {
         {/* ── 概要 ─────────────────────────────────────── */}
         {tab === "概要" && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-xs text-gray-500">株式</span></div>
                 <div className="font-bold text-gray-900">¥{stocksTotal.toLocaleString()}</div>
@@ -1092,11 +1092,6 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-purple-500" /><span className="text-xs text-gray-500">投資信託</span></div>
                 <div className="font-bold text-gray-900">¥{fundsTotal.toLocaleString()}</div>
                 <div className={`text-xs mt-0.5 ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}>{fundsGain >= 0 ? "+" : ""}{fundsGain.toLocaleString()}円</div>
-              </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm col-span-2 sm:col-span-1">
-                <div className="text-xs text-gray-500 mb-2">今売ったら税金（概算）</div>
-                <div className="font-bold text-orange-600">¥{(stocksTax + fundsTax).toLocaleString()}</div>
-                <div className="text-xs text-gray-400 mt-0.5">手取り ¥{(grandTotal - stocksTax - fundsTax).toLocaleString()}</div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1142,8 +1137,12 @@ export default function Dashboard() {
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
               <div><div className="text-xs text-gray-400">評価額合計</div><div className="font-bold text-gray-900">¥{stocksTotal.toLocaleString()}</div></div>
               <div><div className="text-xs text-gray-400">評価損益</div><div className={`font-bold ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}>{stocksGain >= 0 ? "+" : ""}{stocksGain.toLocaleString()}円</div></div>
-              <div><div className="text-xs text-gray-400">税引後手取り（概算）</div><div className="font-bold text-gray-700">¥{(stocksTotal - stocksTax).toLocaleString()}</div></div>
-              <div className="text-xs text-gray-400 self-end">※税金は特定・一般口座のみ 20.315%</div>
+              <div className="border-l border-gray-100 pl-4">
+                <div className="text-xs text-gray-400">今売ったら税金（概算）</div>
+                <div className="font-bold text-orange-500">¥{stocksTax.toLocaleString()}</div>
+              </div>
+              <div><div className="text-xs text-gray-400">税引後手取り</div><div className="font-bold text-gray-700">¥{(stocksTotal - stocksTax).toLocaleString()}</div></div>
+              <div className="text-xs text-gray-400 self-end w-full">※特定・一般口座のみ 20.315%</div>
             </div>
             {stocks.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400 shadow-sm">
