@@ -55,7 +55,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       if (!name) setName(result.name);
       setCurrentPrice(String(Math.round(result.price)));
     } else {
-      setFetchError("取得できませんでした。銘柄コードを確認してください。");
+      setFetchError("株価を自動取得できませんでした。下の「現在値」欄に手動で入力してください。");
     }
   }
 
@@ -204,13 +204,17 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
             <input
               type="number"
               value={currentPrice}
-              onChange={e => setCurrentPrice(e.target.value)}
+              onChange={e => { setCurrentPrice(e.target.value); if (fetchError) setFetchError(null); }}
               placeholder="3200"
               min={0}
               step="0.01"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fetchError ? "border-orange-400 ring-orange-200 focus:ring-orange-400 bg-orange-50" : "border-gray-200 focus:ring-blue-500"}`}
               required
+              autoFocus={!!fetchError}
             />
+            {fetchError && !currentPrice && (
+              <p className="mt-1 text-xs text-orange-600">↑ ここに現在の株価を入力してください</p>
+            )}
           </div>
 
           <div>
