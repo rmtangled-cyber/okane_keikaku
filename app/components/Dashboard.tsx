@@ -274,7 +274,7 @@ function calcMortgagePaymentForSimYear(
       const loanYearIndex = calYear - loanStartYear;
       if (loanYearIndex >= termYears) continue;
       const periodSettings = buildPropPeriodSettings(prop, sharedBaseRate, rateScenario, loanStartYear);
-      const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings);
+      const paymentsByYear = mortgageMonthlyPaymentByYear(principal, termYears, periodSettings, prop.repaymentType ?? "元利均等");
       total += paymentsByYear[loanYearIndex] ?? 0;
     }
   }

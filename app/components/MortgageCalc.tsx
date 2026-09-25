@@ -36,6 +36,7 @@ function simulateCustom(
   rateChanges: { fromYear: number; rate: number; extra: number }[],
   bonusPerOccurrence: number = 0,
   bonusTimesPerYear: number = 2,
+  repaymentType: "元利均等" | "元金均等" = "元利均等",
 ): SimResult {
   const sorted = [...rateChanges].sort((a, b) => a.fromYear - b.fromYear);
 
@@ -47,11 +48,8 @@ function simulateCustom(
     return r;
   };
 
-  // ボーナス返済は年間返済額の内訳振り分け: 月次返済 = 標準月次 - ボーナス×N/12
   const bonusIntervalMonths = bonusTimesPerYear > 0 ? Math.round(12 / bonusTimesPerYear) : 12;
   const bonusMonthlyOffset = bonusPerOccurrence * bonusTimesPerYear / 12;
-  let currentRate = getRateForYear(1);
-  let currentPayment = Math.max(0, calcPayment(principal, currentRate, termMonths) - bonusMonthlyOffset);
   let balance = principal;
   let unpaidInterest = 0;
   let totalPaid = 0;
@@ -65,6 +63,68 @@ function simulateCustom(
   let annualPrincipalAcc = 0;
   let annualBonusAcc = 0;
   const periods: SimPeriod[] = [];
+
+  if (repaymentType === "元金均等") {
+    // 元金均等: 月次元金は固定、利息は残高に応じて逓減
+    const fixedMonthlyPrincipal = Math.max(0, principal / termMonths - bonusMonthlyOffset);
+    let currentRate = getRateForYear(1);
+    // periodsは5年ごとの代表値（年初の支払い額）で表示
+    let periodStartYear = 1;
+    for (let m = 1; m <= termMonths; m++) {
+      const year = Math.ceil(m / 12);
+      const isFirstMonthOfYear = (m - 1) % 12 === 0;
+      const isFirstMonthOf5YearPeriod = m > 1 && (m - 1) % 60 === 0;
+
+      if (isFirstMonthOfYear && year > 1) {
+        for (const rc of sorted) {
+          if (rc.fromYear === year && rc.extra > 0 && balance > 0) {
+            const applied = Math.min(rc.extra, balance);
+            balance = Math.max(0, balance - applied);
+            totalExtra += applied;
+            annualPrincipalAcc += applied;
+          }
+        }
+        currentRate = getRateForYear(year);
+      }
+
+      if (isFirstMonthOf5YearPeriod) {
+        const periodEndYear = (m - 1) / 12;
+        const firstMonthPayment = Math.round(Math.min(balance, fixedMonthlyPrincipal) + balance * currentRate / 100 / 12);
+        periods.push({ label: `${periodStartYear}〜${periodEndYear}年目`, payment: firstMonthPayment, capped: false, rateAtStart: getRateForYear(periodStartYear) });
+        periodStartYear = year;
+      }
+
+      if (bonusPerOccurrence > 0 && m % bonusIntervalMonths === 0 && balance > 0) {
+        const applied = Math.min(bonusPerOccurrence, balance);
+        balance = Math.max(0, balance - applied);
+        totalPaid += applied;
+        annualPrincipalAcc += applied;
+        annualBonusAcc += applied;
+      }
+
+      const monthlyInterest = balance * currentRate / 100 / 12;
+      const principalPart = Math.min(balance, fixedMonthlyPrincipal);
+      const monthlyPayment = principalPart + monthlyInterest;
+      balance = Math.max(0, balance - principalPart);
+      totalPaid += monthlyPayment;
+      annualInterestAcc += monthlyInterest;
+      annualPrincipalAcc += principalPart;
+
+      if (m % 12 === 0) {
+        chartPoints.push({ year: m / 12, principal: Math.round(balance), unpaidInterest: 0, total: Math.round(balance) });
+        annualBreakdown.push({ year: m / 12, interest: Math.round(annualInterestAcc), principal: Math.round(annualPrincipalAcc), bonus: Math.round(annualBonusAcc) });
+        annualInterestAcc = 0; annualPrincipalAcc = 0; annualBonusAcc = 0;
+      }
+    }
+    const lastFirstMonthPayment = Math.round(Math.min(balance, fixedMonthlyPrincipal) + balance * getRateForYear(termMonths / 12) / 100 / 12);
+    periods.push({ label: `${periodStartYear}〜${termMonths / 12}年目`, payment: lastFirstMonthPayment, capped: false, rateAtStart: getRateForYear(periodStartYear) });
+    const finalLumpSum = Math.max(0, Math.round(balance + unpaidInterest));
+    return { periods, chartPoints, annualBreakdown, finalLumpSum, totalPaid: Math.round(totalPaid), totalExtra: Math.round(totalExtra), totalInterest: Math.round(totalPaid + totalExtra + finalLumpSum - principal) };
+  }
+
+  // 元利均等
+  let currentRate = getRateForYear(1);
+  let currentPayment = Math.max(0, calcPayment(principal, currentRate, termMonths) - bonusMonthlyOffset);
   let periodStartYear = 1;
   let periodCapped = false;
 
@@ -104,7 +164,7 @@ function simulateCustom(
     if (bonusPerOccurrence > 0 && m % bonusIntervalMonths === 0 && balance > 0) {
       const applied = Math.min(bonusPerOccurrence, balance);
       balance = Math.max(0, balance - applied);
-      totalPaid += applied;  // ボーナス返済は通常返済の一部（繰上げではない）
+      totalPaid += applied;
       annualPrincipalAcc += applied;
       annualBonusAcc += applied;
     }
@@ -218,6 +278,7 @@ interface BorrowerSimData {
   sim: SimResult;
   hasCap: boolean;
   hasUnpaid: boolean;
+  hasEqualPrincipal: boolean;
 }
 
 export default function MortgageCalc() {
@@ -480,7 +541,7 @@ export default function MortgageCalc() {
           }
         }
 
-        const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual, propBonusTimesPerYear);
+        const propSim = simulateCustom(propPrincipal, propTermMonths, parsedChanges, propBonusSemiAnnual, propBonusTimesPerYear, prop.repaymentType ?? "元利均等");
 
         totalPaid += propSim.totalPaid;
         totalExtra += propSim.totalExtra;
@@ -541,6 +602,7 @@ export default function MortgageCalc() {
         sim,
         hasCap: periods.some(p => p.capped),
         hasUnpaid: finalLumpSum > 0,
+        hasEqualPrincipal: props.some(p => p.repaymentType === "元金均等"),
       });
     }
 
@@ -620,6 +682,9 @@ export default function MortgageCalc() {
                       )}
                       {prop.bridgeLoanRate && (
                         <span className="text-amber-600">つなぎ {prop.bridgeLoanRate}%</span>
+                      )}
+                      {prop.repaymentType === "元金均等" && (
+                        <span className="text-purple-600">元金均等</span>
                       )}
                     </div>
                     {prop.note && <div className="text-xs text-gray-400 mt-0.5 truncate">{prop.note}</div>}
@@ -954,7 +1019,11 @@ export default function MortgageCalc() {
                 {/* Annual breakdown chart */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                   <h4 className="text-sm font-semibold text-gray-800 mb-1">年次返済内訳（利息 vs 元金返済）</h4>
-                  <p className="text-xs text-gray-400 mb-3">序盤は利息の割合が高く、後半になるほど元金返済が増えます</p>
+                  <p className="text-xs text-gray-400 mb-3">
+                    {data.hasEqualPrincipal
+                      ? "元金均等: 元金返済額は一定、利息は毎月逓減するため月次返済額は年々下がります"
+                      : "序盤は利息の割合が高く、後半になるほど元金返済が増えます"}
+                  </p>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={data.sim.annualBreakdown} barSize={data.maxTermYears > 30 ? 6 : 10}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />

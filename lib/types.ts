@@ -247,6 +247,7 @@ export interface MortgageProperty {
   bonusRepaymentMan?: number; // ボーナス返済額（万円/回）
   bonusTimesPerYear?: number; // ボーナス返済回数（年N回、デフォルト2）
   bridgeLoanRate?: string;   // つなぎ融資金利（%）複数日付ローンで自動検出
+  repaymentType?: "元利均等" | "元金均等";
   note?: string;
   updatedAt: string;
 }
