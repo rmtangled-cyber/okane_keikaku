@@ -224,10 +224,11 @@ function simulateCustom(
 const fmt = (v: number) =>
   v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}億` : `${Math.round(v / 10000)}万`;
 
-function AnnualBreakdownTooltip({ active, payload, label }: {
+function AnnualBreakdownTooltip({ active, payload, label, loanStartCalYear }: {
   active?: boolean;
   payload?: { name: string; value: number; payload?: { bonus?: number } }[];
   label?: string | number;
+  loanStartCalYear?: number;
 }) {
   if (!active || !payload?.length) return null;
   const interest = payload.find(p => p.name === "利息")?.value ?? 0;
@@ -235,9 +236,12 @@ function AnnualBreakdownTooltip({ active, payload, label }: {
   const bonus = payload[0]?.payload?.bonus ?? 0;
   const annual = interest + principal;
   const monthly = Math.round(annual / 12);
+  const labelText = loanStartCalYear
+    ? `${loanStartCalYear + Number(label)}年 (${label}年目)`
+    : `${label}年目`;
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
-      <div className="font-semibold text-gray-700 mb-2">{label}年目</div>
+      <div className="font-semibold text-gray-700 mb-2">{labelText}</div>
       <div className="space-y-1">
         <div className="flex justify-between gap-4">
           <span className="text-gray-500">年間合計</span>
@@ -275,10 +279,26 @@ interface BorrowerSimData {
   totalPrincipal: number;
   initialMonthly: number;
   maxTermYears: number;
+  loanStartCalYear: number;
   sim: SimResult;
   hasCap: boolean;
   hasUnpaid: boolean;
   hasEqualPrincipal: boolean;
+}
+
+function makeLoanYearTick(loanStartCalYear: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function YearTick(props: any) {
+    const { x, y, payload } = props;
+    const v = payload?.value ?? 0;
+    if (x == null || y == null) return null;
+    return (
+      <g transform={`translate(${Number(x)},${Number(y)})`}>
+        <text textAnchor="middle" fill="#374151" fontSize={9} dy={12}>{loanStartCalYear + v}年</text>
+        <text textAnchor="middle" fill="#9ca3af" fontSize={8} dy={23}>{v}年目</text>
+      </g>
+    );
+  };
 }
 
 export default function MortgageCalc() {
@@ -292,6 +312,7 @@ export default function MortgageCalc() {
   const [editingProperty, setEditingProperty] = useState<MortgageProperty | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [expandedBorrowers, setExpandedBorrowers] = useState<Record<string, boolean>>({});
+  const [pendingPreset, setPendingPreset] = useState<{ label: string; entries: RateScenarioEntry[] } | null>(null);
 
   function migrateProperty(raw: Record<string, unknown>): MortgageProperty {
     const id = String(raw.id ?? `prop_${Date.now()}`);
@@ -599,6 +620,7 @@ export default function MortgageCalc() {
         totalPrincipal,
         initialMonthly,
         maxTermYears,
+        loanStartCalYear: refDate.getFullYear(),
         sim,
         hasCap: periods.some(p => p.capped),
         hasUnpaid: finalLumpSum > 0,
@@ -882,6 +904,68 @@ export default function MortgageCalc() {
 
         {showRateScenario && (
           <div className="border-t border-gray-50 px-5 py-4 space-y-4">
+            {/* Preset scenario buttons */}
+            <div>
+              <div className="text-xs font-medium text-gray-600 mb-2">シナリオプリセット</div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "横ばい", entries: [] as RateScenarioEntry[] },
+                  { label: "緩やかな利上げ", entries: [
+                    { id: `rs_p1`, fromYear: "2028", baseRate: String((parseFloat(sharedBaseRate) + 0.25).toFixed(3)) },
+                    { id: `rs_p2`, fromYear: "2031", baseRate: String((parseFloat(sharedBaseRate) + 0.50).toFixed(3)) },
+                    { id: `rs_p3`, fromYear: "2034", baseRate: String((parseFloat(sharedBaseRate) + 0.75).toFixed(3)) },
+                  ]},
+                  { label: "段階的利上げ", entries: [
+                    { id: `rs_p1`, fromYear: "2027", baseRate: String((parseFloat(sharedBaseRate) + 0.50).toFixed(3)) },
+                    { id: `rs_p2`, fromYear: "2030", baseRate: String((parseFloat(sharedBaseRate) + 1.00).toFixed(3)) },
+                  ]},
+                  { label: "急騰シナリオ", entries: [
+                    { id: `rs_p1`, fromYear: "2027", baseRate: String((parseFloat(sharedBaseRate) + 1.00).toFixed(3)) },
+                    { id: `rs_p2`, fromYear: "2030", baseRate: String((parseFloat(sharedBaseRate) + 2.00).toFixed(3)) },
+                  ]},
+                ].map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      if (rateScenario.length > 0) {
+                        setPendingPreset(preset);
+                      } else {
+                        setRateScenario(preset.entries.map((e, i) => ({ ...e, id: `rs_preset_${Date.now()}_${i}` })));
+                      }
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              {pendingPreset && (
+                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-amber-700 flex-1">「{pendingPreset.label}」を適用すると現在のシナリオが上書きされます。</span>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRateScenario(pendingPreset.entries.map((e, i) => ({ ...e, id: `rs_preset_${Date.now()}_${i}` })));
+                        setPendingPreset(null);
+                      }}
+                      className="text-xs px-2.5 py-1 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    >
+                      適用
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingPreset(null)}
+                      className="text-xs px-2.5 py-1 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 現在の基準金利（%）
@@ -1024,13 +1108,13 @@ export default function MortgageCalc() {
                       ? "元金均等: 元金返済額は一定、利息は毎月逓減するため月次返済額は年々下がります"
                       : "序盤は利息の割合が高く、後半になるほど元金返済が増えます"}
                   </p>
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={240}>
                     <BarChart data={data.sim.annualBreakdown} barSize={data.maxTermYears > 30 ? 6 : 10}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                      <XAxis dataKey="year" tick={makeLoanYearTick(data.loanStartCalYear)} height={40}
                         ticks={[5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= data.maxTermYears)} />
                       <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-                      <Tooltip content={<AnnualBreakdownTooltip />} />
+                      <Tooltip content={<AnnualBreakdownTooltip loanStartCalYear={data.loanStartCalYear} />} />
                       <Legend />
                       <Bar dataKey="interest" name="利息" stackId="a" fill="#f87171" />
                       <Bar dataKey="principal" name="元金返済" stackId="a" fill="#60a5fa" />
@@ -1041,13 +1125,13 @@ export default function MortgageCalc() {
                 {/* Balance chart */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                   <h4 className="text-sm font-semibold text-gray-800 mb-3">残高・未払い利息の推移</h4>
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={data.sim.chartPoints}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="year" tick={{ fontSize: 10 }} tickFormatter={v => `${v}年`}
+                      <XAxis dataKey="year" tick={makeLoanYearTick(data.loanStartCalYear)} height={40}
                         ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].filter(y => y <= data.maxTermYears)} />
                       <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={56} />
-                      <Tooltip labelFormatter={l => `${l}年後`} formatter={(v, name) => [fmt(Number(v)), name]} />
+                      <Tooltip labelFormatter={l => `${data.loanStartCalYear + Number(l)}年 (${l}年目)`} formatter={(v, name) => [fmt(Number(v)), name]} />
                       <Legend />
                       <Line dataKey="principal" name="元金残高" stroke="#3b82f6" strokeWidth={2} dot={false} type="monotone" />
                       <Line dataKey="unpaidInterest" name="未払い利息" stroke="#ef4444" strokeWidth={2} dot={false} type="monotone" />

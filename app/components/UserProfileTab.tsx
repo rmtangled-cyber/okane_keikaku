@@ -147,6 +147,16 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
                 {spouse && (
                   <>
                     <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">名前:</span>
+                      <input
+                        type="text"
+                        value={spouse.name ?? ""}
+                        onChange={e => updateSpouse({ name: e.target.value })}
+                        placeholder="ニックネーム（任意）"
+                        className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">生年:</span>
                       <div className="relative">
                         <input
