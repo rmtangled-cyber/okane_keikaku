@@ -679,9 +679,14 @@ export default function MortgageCalc() {
                 const propTotal = loanItems.reduce((s, c) => s + c.amountMan, 0);
                 return (
                   <div key={prop.id} className="px-5 py-3.5">
-                    <div className="flex items-baseline justify-between mb-1.5">
-                      <span className="text-sm font-semibold text-gray-700">{prop.propertyName || "（物件名なし）"}</span>
-                      <span className="text-sm font-bold text-indigo-700">{propTotal.toLocaleString()}万円</span>
+                    <div className="flex items-center justify-between mb-1.5 gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="text-sm font-semibold text-gray-700">{prop.propertyName || "（物件名なし）"}</span>
+                        {borrowerLabel(prop) && (
+                          <span className="text-xs bg-blue-50 text-blue-600 font-medium rounded-full px-2 py-0.5 shrink-0">{borrowerLabel(prop)}</span>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold text-indigo-700 shrink-0">{propTotal.toLocaleString()}万円</span>
                     </div>
                     <ul className="space-y-0.5 pl-1">
                       {loanItems.map(item => (
