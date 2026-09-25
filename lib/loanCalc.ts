@@ -84,11 +84,38 @@ export function mortgageMonthlyPaymentByYear(
   principal: number,
   termYears: number,
   periodSettings: { fromYear?: number; rate: string; extra: string }[],
+  repaymentType: "元利均等" | "元金均等" = "元利均等",
 ): number[] {
   const termMonths = termYears * 12;
   const sorted = [...periodSettings].sort((a, b) => (a.fromYear ?? 1) - (b.fromYear ?? 1));
   const result: number[] = [];
   let balance = principal;
+
+  if (repaymentType === "元金均等") {
+    const fixedMonthlyPrincipal = principal / termMonths;
+    for (let year = 0; year < termYears; year++) {
+      if (balance <= 0) { result.push(0); continue; }
+      const loanYear = year + 1;
+      if (loanYear > 1) {
+        const extraPs = sorted.find(s => (s.fromYear ?? 1) === loanYear);
+        if (extraPs) {
+          const extra = (parseFloat(extraPs.extra) || 0) * 10000;
+          balance = Math.max(0, balance - extra);
+        }
+      }
+      const ps = [...sorted].reverse().find(s => (s.fromYear ?? 1) <= loanYear) ?? sorted[0];
+      const annualRatePct = parseFloat(ps?.rate ?? "0") || 0;
+      const r = annualRatePct / 100 / 12;
+      // 代表値として年初の月次返済額を返す
+      const firstMonthPayment = Math.ceil(Math.min(balance, fixedMonthlyPrincipal) + balance * r);
+      for (let m = 0; m < 12 && balance > 0; m++) {
+        const principalPart = Math.min(balance, fixedMonthlyPrincipal);
+        balance = Math.max(0, balance - principalPart);
+      }
+      result.push(firstMonthPayment);
+    }
+    return result;
+  }
 
   for (let year = 0; year < termYears; year++) {
     if (balance <= 0) { result.push(0); continue; }

@@ -42,6 +42,7 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
   );
   const [showPrepayPlan, setShowPrepayPlan] = useState(false);
   const [bridgeLoanRate, setBridgeLoanRate] = useState(property?.bridgeLoanRate ?? "");
+  const [repaymentType, setRepaymentType] = useState<"元利均等" | "元金均等">(property?.repaymentType ?? "元利均等");
 
   const hasBridge = useMemo(() => {
     const loanItems = costItems.filter(
@@ -98,6 +99,7 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
       bonusRepaymentMan: bonus > 0 ? bonus : undefined,
       bonusTimesPerYear: bonus > 0 ? bonusTimesPerYear : undefined,
       bridgeLoanRate: hasBridge ? (bridgeLoanRate.trim() || undefined) : undefined,
+      repaymentType,
       note: note || undefined,
       updatedAt: new Date().toISOString(),
     });
@@ -193,6 +195,28 @@ export default function MortgagePropertyModal({ property, borrowerOptions, curre
                   }`}
                 >
                   固定金利
+                </button>
+              </div>
+
+              {/* 元利均等 / 元金均等トグル */}
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setRepaymentType("元利均等")}
+                  className={`flex-1 px-3 py-2 transition-colors border-r border-gray-200 ${
+                    repaymentType === "元利均等" ? "bg-blue-600 text-white font-medium" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  元利均等
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRepaymentType("元金均等")}
+                  className={`flex-1 px-3 py-2 transition-colors ${
+                    repaymentType === "元金均等" ? "bg-blue-600 text-white font-medium" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  元金均等
                 </button>
               </div>
 
