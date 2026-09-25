@@ -303,7 +303,7 @@ export async function removeViewerEmail(viewerEmail: string): Promise<void> {
   const snap = await getDoc(emailsRef);
   const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
   await setDoc(emailsRef, { emails: current.filter(e => e !== viewerEmail) });
-  await deleteDoc(doc(db, "viewerIndex", viewerEmail));
+  try { await deleteDoc(doc(db, "viewerIndex", viewerEmail)); } catch { /* best effort */ }
 }
 
 export async function loadOwnerDisplayName(ownerUid: string): Promise<string | null> {
