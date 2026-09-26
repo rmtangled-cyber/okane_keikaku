@@ -5,6 +5,8 @@ import { StockHolding, AccountType } from "@/lib/types";
 import { fetchStockQuote } from "@/lib/marketData";
 import { X, RefreshCw, Loader2 } from "lucide-react";
 
+type Currency = "JPY" | "USD";
+
 const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
 ];
@@ -23,6 +25,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("特定口座");
   const [memberId, setMemberId] = useState<string | undefined>(undefined);
+  const [currency, setCurrency] = useState<Currency>("JPY");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [shares, setShares] = useState("");
   const [currentPrice, setCurrentPrice] = useState("");
@@ -37,6 +40,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       setName(stock.name);
       setAccountType(stock.accountType);
       setMemberId(stock.memberId);
+      setCurrency(stock.currency ?? "JPY");
       setPurchasePrice(String(stock.purchasePrice));
       setShares(String(stock.shares));
       setCurrentPrice(String(stock.currentPrice));
@@ -69,6 +73,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       ticker: ticker.toUpperCase(),
       name, accountType,
       memberId: memberId || undefined,
+      currency,
       purchasePrice: pp,
       shares: sh,
       currentPrice: cp,
@@ -159,14 +164,36 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">通貨</label>
+            <div className="flex gap-2">
+              {(["JPY", "USD"] as Currency[]).map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCurrency(c)}
+                  className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
+                    currency === c
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {c === "JPY" ? "¥ 円（JPY）" : "$ ドル（USD）"}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">取得単価（円）</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                取得単価（{currency === "USD" ? "$" : "円"}）
+              </label>
               <input
                 type="number"
                 value={purchasePrice}
                 onChange={e => setPurchasePrice(e.target.value)}
-                placeholder="2500"
+                placeholder={currency === "USD" ? "150.00" : "2500"}
                 min={0}
                 step="0.01"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -190,7 +217,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              現在値（円）
+              現在値（{currency === "USD" ? "$" : "円"}）
               <button
                 type="button"
                 onClick={() => lookupTicker(ticker)}
@@ -205,7 +232,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
               type="number"
               value={currentPrice}
               onChange={e => { setCurrentPrice(e.target.value); if (fetchError) setFetchError(null); }}
-              placeholder="3200"
+              placeholder={currency === "USD" ? "155.00" : "3200"}
               min={0}
               step="0.01"
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fetchError ? "border-orange-400 ring-orange-200 focus:ring-orange-400 bg-orange-50" : "border-gray-200 focus:ring-blue-500"}`}

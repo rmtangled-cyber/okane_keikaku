@@ -43,9 +43,11 @@ export interface StockHolding {
   name: string;          // 銘柄名（例: トヨタ自動車）
   accountType: AccountType;
   memberId?: string; // 名義人（"self", "spouse", または子供のid）
-  purchasePrice: number; // 取得単価（円）
+  currency?: "JPY" | "USD"; // 取得単価・現在値の通貨（省略=JPY）
+  purchasePrice: number; // 取得単価（通貨単位）
   shares: number;        // 保有株数
-  currentPrice: number;  // 現在値（手動入力、円）
+  currentPrice: number;  // 現在値（通貨単位）
+  usdJpyRate?: number;   // 一括取得時のUSD/JPYレート（USD銘柄のみ）
   purchaseDate?: string;
   note?: string;
   updatedAt: string;

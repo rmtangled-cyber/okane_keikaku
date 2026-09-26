@@ -54,20 +54,28 @@ export async function fetchStockQuote(ticker: string): Promise<QuoteResult | nul
 }
 
 /**
+ * USD/JPYレートをstooqから取得
+ */
+export async function fetchUsdJpyRate(): Promise<number | null> {
+  return fetchStooq("USDJPY.FX");
+}
+
+/**
  * 複数銘柄を一括取得（直列、間隔なし）
- * Returns map of ticker → price
+ * Returns { prices: map of ticker → price, usdJpyRate: USD/JPYレート or null }
  */
 export async function fetchStockQuotesBulk(
   tickers: string[],
   onProgress?: (done: number, total: number) => void,
-): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+): Promise<{ prices: Map<string, number>; usdJpyRate: number | null }> {
+  const prices = new Map<string, number>();
   for (let i = 0; i < tickers.length; i++) {
     const q = await fetchStockQuote(tickers[i]);
-    if (q) result.set(tickers[i].toUpperCase(), q.price);
+    if (q) prices.set(tickers[i].toUpperCase(), q.price);
     onProgress?.(i + 1, tickers.length);
   }
-  return result;
+  const usdJpyRate = await fetchUsdJpyRate();
+  return { prices, usdJpyRate };
 }
 
 /**
