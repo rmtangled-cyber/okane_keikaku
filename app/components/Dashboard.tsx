@@ -590,13 +590,23 @@ export default function Dashboard() {
     if (cur === "JPY") return 1;
     return h.fxRates?.[cur] ?? (cur === "USD" ? (h.usdJpyRate ?? 0) : 0);
   }
-  function stockJPY(h: StockHolding): number {
-    const cur = h.currentCurrency ?? h.currency ?? "JPY";
-    return h.currentPrice * h.shares * getRate(h, cur);
+  // currentPrice=0（未入力）や FXレート未取得の場合は { currentJPY:0, costJPY:0 } を返し
+  // 損益計算から除外する（大幅マイナスになるのを防ぐ）
+  function stockJPYPair(h: StockHolding): { currentJPY: number; costJPY: number } {
+    const currentCur = h.currentCurrency ?? h.currency ?? "JPY";
+    const purchaseCur = h.purchaseCurrency ?? h.currency ?? "JPY";
+    const currentRate = getRate(h, currentCur);
+    const purchaseRate = getRate(h, purchaseCur);
+    if (h.currentPrice <= 0 || currentRate === 0 || purchaseRate === 0) {
+      return { currentJPY: 0, costJPY: 0 };
+    }
+    return {
+      currentJPY: h.currentPrice * h.shares * currentRate,
+      costJPY: h.purchasePrice * h.shares * purchaseRate,
+    };
   }
-  function stockCostJPY(h: StockHolding): number {
-    const cur = h.purchaseCurrency ?? h.currency ?? "JPY";
-    return h.purchasePrice * h.shares * getRate(h, cur);
+  function stockJPY(h: StockHolding): number {
+    return stockJPYPair(h).currentJPY;
   }
   const stocksTotal = stocks.reduce((s, h) => s + stockJPY(h), 0);
   const fundsTotal = funds.reduce((s, f) => s + f.currentValue, 0);
@@ -604,8 +614,14 @@ export default function Dashboard() {
   const savingsTotal = savingsAccounts.reduce((s, a) => s + a.balance, 0);
   const grandTotal = stocksTotal + fundsTotal + assetsTotal + savingsTotal;
 
-  const stocksGain = stocks.reduce((s, h) => s + (stockJPY(h) - stockCostJPY(h)), 0);
-  const stocksTax = stocks.reduce((s, h) => s + calcTax(stockJPY(h) - stockCostJPY(h), h.accountType), 0);
+  const stocksGain = stocks.reduce((s, h) => {
+    const { currentJPY, costJPY } = stockJPYPair(h);
+    return s + (currentJPY - costJPY);
+  }, 0);
+  const stocksTax = stocks.reduce((s, h) => {
+    const { currentJPY, costJPY } = stockJPYPair(h);
+    return s + calcTax(currentJPY - costJPY, h.accountType);
+  }, 0);
   const fundsGain = funds.reduce((s, f) => s + (f.currentValue - f.purchaseAmount), 0);
   const fundsTax = funds.reduce((s, f) => s + calcTax(f.currentValue - f.purchaseAmount, f.accountType), 0);
 
