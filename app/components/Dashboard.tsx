@@ -585,14 +585,18 @@ export default function Dashboard() {
   }, []);
 
   // ── Totals ────────────────────────────────────────────
-  // USD銘柄はusdJpyRate（保存済み）で円換算。未取得の場合は0円扱い
+  // 非JPY銘柄は fxRates（一括取得時保存）で円換算。レート未取得の場合は0円扱い
+  function getRate(h: StockHolding, cur: string): number {
+    if (cur === "JPY") return 1;
+    return h.fxRates?.[cur] ?? (cur === "USD" ? (h.usdJpyRate ?? 0) : 0);
+  }
   function stockJPY(h: StockHolding): number {
-    if (h.currency === "USD") return h.usdJpyRate ? h.currentPrice * h.shares * h.usdJpyRate : 0;
-    return h.currentPrice * h.shares;
+    const cur = h.currentCurrency ?? h.currency ?? "JPY";
+    return h.currentPrice * h.shares * getRate(h, cur);
   }
   function stockCostJPY(h: StockHolding): number {
-    if (h.currency === "USD") return h.usdJpyRate ? h.purchasePrice * h.shares * h.usdJpyRate : 0;
-    return h.purchasePrice * h.shares;
+    const cur = h.purchaseCurrency ?? h.currency ?? "JPY";
+    return h.purchasePrice * h.shares * getRate(h, cur);
   }
   const stocksTotal = stocks.reduce((s, h) => s + stockJPY(h), 0);
   const fundsTotal = funds.reduce((s, f) => s + f.currentValue, 0);
@@ -747,7 +751,12 @@ export default function Dashboard() {
     setStockFetchError(null);
     setStockFetchProgress({ done: 0, total: stocks.length });
     const tickers = stocks.map(s => s.ticker);
-    const { prices, usdJpyRate } = await fetchStockQuotesBulk(tickers, (done, total) => {
+    // 使用中の全通貨を収集（購入/現在値、旧フィールド含む）
+    const currencies = stocks.flatMap(s => [
+      s.purchaseCurrency ?? s.currency ?? "JPY",
+      s.currentCurrency ?? s.currency ?? "JPY",
+    ]);
+    const { prices, fxRates } = await fetchStockQuotesBulk(tickers, currencies, (done, total) => {
       setStockFetchProgress({ done, total });
     });
     setStockFetching(false);
@@ -759,9 +768,8 @@ export default function Dashboard() {
     setStocks(prev => {
       const next = prev.map(s => {
         const p = prices.get(s.ticker.toUpperCase());
-        const isUSD = s.currency === "USD";
         return p != null
-          ? { ...s, currentPrice: p, ...(isUSD && usdJpyRate ? { usdJpyRate } : {}), updatedAt: new Date().toISOString() }
+          ? { ...s, currentPrice: p, fxRates: Object.keys(fxRates).length > 0 ? fxRates : s.fxRates, updatedAt: new Date().toISOString() }
           : s;
       });
       saveStocks(next);
@@ -1550,7 +1558,7 @@ export default function Dashboard() {
                 <button onClick={() => { setEditingStock(null); setShowStockModal(true); }} className="mt-3 text-xs text-green-600 hover:underline">最初の銘柄を追加する</button>
               </div>
             ) : (
-              <div className="space-y-3">{stocks.map(s => <StockCard key={s.id} stock={s} memberLabel={s.memberId ? memberOptions.find(o => o.id === s.memberId)?.label : undefined} usdJpyRate={s.usdJpyRate} onEdit={s => { setEditingStock(s); setShowStockModal(true); }} onDelete={handleDeleteStock} />)}</div>
+              <div className="space-y-3">{stocks.map(s => <StockCard key={s.id} stock={s} memberLabel={s.memberId ? memberOptions.find(o => o.id === s.memberId)?.label : undefined} onEdit={s => { setEditingStock(s); setShowStockModal(true); }} onDelete={handleDeleteStock} />)}</div>
             )}
           </div>
         )}
