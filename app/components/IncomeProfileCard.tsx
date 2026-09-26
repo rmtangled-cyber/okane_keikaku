@@ -7,11 +7,12 @@ import { useState } from "react";
 
 interface Props {
   profile: IncomeProfile;
+  memberLabel?: string;
   onEdit: (p: IncomeProfile) => void;
   onDelete: (id: string) => void;
 }
 
-export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) {
+export default function IncomeProfileCard({ profile, memberLabel, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
   const bonusAnnual = profile.bonusAnnual ?? 0;
   const annualBase = profile.grossAnnual ?? profile.grossMonthly * 12; // ボーナス込み年収
@@ -44,8 +45,8 @@ export default function IncomeProfileCard({ profile, onEdit, onDelete }: Props) 
               {profile.incomeType === "pension" && (
                 <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">年金</span>
               )}
-              {profile.memberId === "spouse" && (
-                <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full">配偶者</span>
+              {memberLabel && (
+                <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full">{memberLabel}</span>
               )}
               {profile.activeFromYear && (
                 <span className="text-xs px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded-full">

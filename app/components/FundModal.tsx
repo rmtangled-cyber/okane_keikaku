@@ -9,7 +9,7 @@ const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "つみたてNISA", "一般口座", "iDeCo",
 ];
 
-interface MemberOption { id: "self" | "spouse"; label: string; }
+interface MemberOption { id: string; label: string; }
 
 interface Props {
   fund?: FundHolding | null;
@@ -22,7 +22,7 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
   const [fundCode, setFundCode] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("NISA（つみたて投資枠）");
-  const [memberId, setMemberId] = useState<"self" | "spouse" | undefined>(undefined);
+  const [memberId, setMemberId] = useState<string | undefined>(undefined);
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [currentValue, setCurrentValue] = useState("");
   const [expectedReturn, setExpectedReturn] = useState("");
