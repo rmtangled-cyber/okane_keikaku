@@ -14,17 +14,27 @@ const ACCOUNT_COLORS: Record<string, string> = {
 interface Props {
   stock: StockHolding;
   memberLabel?: string;
+  usdJpyRate?: number | null;
   onEdit: (s: StockHolding) => void;
   onDelete: (id: string) => void;
 }
 
-export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Props) {
+export default function StockCard({ stock, memberLabel, usdJpyRate, onEdit, onDelete }: Props) {
+  const isUSD = stock.currency === "USD";
+  const rate = isUSD ? (stock.usdJpyRate ?? usdJpyRate ?? null) : null;
+  const sym = isUSD ? "$" : "¥";
+
   const cost = stock.purchasePrice * stock.shares;
   const currentTotal = stock.currentPrice * stock.shares;
   const gain = currentTotal - cost;
   const gainPct = cost > 0 ? (gain / cost) * 100 : 0;
-  const tax = calcTax(gain, stock.accountType);
-  const netProceeds = currentTotal - tax;
+
+  // For JPY-denominated P&L calculation
+  const costJPY = isUSD && rate ? cost * rate : cost;
+  const currentTotalJPY = isUSD && rate ? currentTotal * rate : currentTotal;
+  const gainJPY = currentTotalJPY - costJPY;
+  const tax = calcTax(gainJPY, stock.accountType);
+  const netProceeds = currentTotalJPY - tax;
   const isUp = gain > 0;
   const isDown = gain < 0;
 
@@ -59,11 +69,11 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
       <div className="grid grid-cols-3 gap-2 text-sm mb-3">
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-0.5">取得単価</div>
-          <div className="font-medium text-gray-700">¥{stock.purchasePrice.toLocaleString()}</div>
+          <div className="font-medium text-gray-700">{sym}{stock.purchasePrice.toLocaleString(undefined, isUSD ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {})}</div>
         </div>
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-0.5">現在値</div>
-          <div className="font-medium text-gray-700">¥{stock.currentPrice.toLocaleString()}</div>
+          <div className="font-medium text-gray-700">{sym}{stock.currentPrice.toLocaleString(undefined, isUSD ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {})}</div>
         </div>
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-0.5">保有株数</div>
@@ -75,13 +85,22 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
       <div className="flex items-center justify-between pt-2 border-t border-gray-50">
         <div>
           <div className="text-xs text-gray-400 mb-0.5">評価額</div>
-          <div className="font-bold text-gray-900">¥{currentTotal.toLocaleString()}</div>
+          <div className="font-bold text-gray-900">
+            {sym}{currentTotal.toLocaleString(undefined, isUSD ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {})}
+          </div>
+          {isUSD && rate && (
+            <div className="text-xs text-gray-400">≈ ¥{Math.round(currentTotalJPY).toLocaleString()}</div>
+          )}
+          {isUSD && !rate && (
+            <div className="text-xs text-orange-400">円換算: 一括取得で更新</div>
+          )}
         </div>
         <div className="text-right">
           <div className="flex items-center gap-1 justify-end">
             {isUp ? <TrendingUp size={14} className="text-green-500" /> : isDown ? <TrendingDown size={14} className="text-red-500" /> : <Minus size={14} className="text-gray-400" />}
             <span className={`font-semibold text-sm ${isUp ? "text-green-600" : isDown ? "text-red-600" : "text-gray-500"}`}>
-              {isUp ? "+" : ""}{gain.toLocaleString()}円
+              {isUp ? "+" : ""}{sym}{Math.abs(gain).toLocaleString(undefined, isUSD ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {})}
+              {isUSD && rate ? ` (¥${Math.round(Math.abs(gainJPY)).toLocaleString()})` : ""}
             </span>
             <span className={`text-xs ${isUp ? "text-green-500" : isDown ? "text-red-500" : "text-gray-400"}`}>
               ({isUp ? "+" : ""}{gainPct.toFixed(1)}%)
@@ -90,9 +109,13 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
           <div className="text-xs text-gray-400 mt-0.5">
             {stock.accountType.startsWith("NISA") || stock.accountType === "iDeCo"
               ? "非課税口座 · 税金 ¥0"
-              : gain > 0
-                ? `税引後 ¥${netProceeds.toLocaleString()}（税 ¥${tax.toLocaleString()}）`
-                : "含み損 · 税金なし"
+              : gainJPY > 0 && rate != null
+                ? `税引後 ¥${Math.round(netProceeds).toLocaleString()}（税 ¥${tax.toLocaleString()}）`
+                : isUSD && !rate
+                  ? "税計算: 一括取得後に表示"
+                  : gain > 0
+                    ? `税引後 ¥${netProceeds.toLocaleString()}（税 ¥${tax.toLocaleString()}）`
+                    : "含み損 · 税金なし"
             }
           </div>
         </div>
