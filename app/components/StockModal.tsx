@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { StockHolding, AccountType } from "@/lib/types";
+import { StockHolding, AccountType, CURRENCIES } from "@/lib/types";
 import { fetchStockQuote } from "@/lib/marketData";
 import { X, RefreshCw, Loader2 } from "lucide-react";
-
-type Currency = "JPY" | "USD";
 
 const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
@@ -25,7 +23,8 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("特定口座");
   const [memberId, setMemberId] = useState<string | undefined>(undefined);
-  const [currency, setCurrency] = useState<Currency>("JPY");
+  const [purchaseCurrency, setPurchaseCurrency] = useState("JPY");
+  const [currentCurrency, setCurrentCurrency] = useState("JPY");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [shares, setShares] = useState("");
   const [currentPrice, setCurrentPrice] = useState("");
@@ -40,7 +39,10 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       setName(stock.name);
       setAccountType(stock.accountType);
       setMemberId(stock.memberId);
-      setCurrency(stock.currency ?? "JPY");
+      // 旧フィールド currency からの移行
+      const legacyCur = stock.currency === "USD" ? "USD" : "JPY";
+      setPurchaseCurrency(stock.purchaseCurrency ?? legacyCur);
+      setCurrentCurrency(stock.currentCurrency ?? legacyCur);
       setPurchasePrice(String(stock.purchasePrice));
       setShares(String(stock.shares));
       setCurrentPrice(String(stock.currentPrice));
@@ -57,7 +59,12 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
     setFetching(false);
     if (result) {
       if (!name) setName(result.name);
-      setCurrentPrice(String(Math.round(result.price)));
+      setCurrentPrice(String(result.price % 1 === 0 ? result.price : result.price.toFixed(2)));
+      // 取得した通貨を自動セット
+      if (result.currency === "USD") {
+        setCurrentCurrency("USD");
+        if (!stock) setPurchaseCurrency("USD");
+      }
     } else {
       setFetchError("株価を自動取得できませんでした。下の「現在値」欄に手動で入力してください。");
     }
@@ -73,7 +80,8 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       ticker: ticker.toUpperCase(),
       name, accountType,
       memberId: memberId || undefined,
-      currency,
+      purchaseCurrency,
+      currentCurrency,
       purchasePrice: pp,
       shares: sh,
       currentPrice: cp,
@@ -81,6 +89,21 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       note: note || undefined,
     });
   }
+
+  const currencySelect = (value: string, onChange: (v: string) => void, id: string) => (
+    <select
+      id={id}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shrink-0"
+    >
+      {CURRENCIES.map(c => (
+        <option key={c.code} value={c.code}>
+          {c.symbol} {c.name}
+        </option>
+      ))}
+    </select>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -164,60 +187,42 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
             />
           </div>
 
+          {/* 取得単価 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">通貨</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">取得単価</label>
             <div className="flex gap-2">
-              {(["JPY", "USD"] as Currency[]).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCurrency(c)}
-                  className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
-                    currency === c
-                      ? "bg-blue-600 border-blue-600 text-white"
-                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {c === "JPY" ? "¥ 円（JPY）" : "$ ドル（USD）"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                取得単価（{currency === "USD" ? "$" : "円"}）
-              </label>
+              {currencySelect(purchaseCurrency, setPurchaseCurrency, "purchase-currency")}
               <input
                 type="number"
                 value={purchasePrice}
                 onChange={e => setPurchasePrice(e.target.value)}
-                placeholder={currency === "USD" ? "150.00" : "2500"}
+                placeholder={purchaseCurrency === "JPY" ? "2500" : "150.00"}
                 min={0}
-                step="0.01"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">保有株数</label>
-              <input
-                type="number"
-                value={shares}
-                onChange={e => setShares(e.target.value)}
-                placeholder="100"
-                min={0}
-                step="0.01"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                step="0.0001"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">保有株数</label>
+            <input
+              type="number"
+              value={shares}
+              onChange={e => setShares(e.target.value)}
+              placeholder="100"
+              min={0}
+              step="0.0001"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          {/* 現在値 */}
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              現在値（{currency === "USD" ? "$" : "円"}）
+              現在値
               <button
                 type="button"
                 onClick={() => lookupTicker(ticker)}
@@ -228,17 +233,20 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
                 再取得
               </button>
             </label>
-            <input
-              type="number"
-              value={currentPrice}
-              onChange={e => { setCurrentPrice(e.target.value); if (fetchError) setFetchError(null); }}
-              placeholder={currency === "USD" ? "155.00" : "3200"}
-              min={0}
-              step="0.01"
-              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fetchError ? "border-orange-400 ring-orange-200 focus:ring-orange-400 bg-orange-50" : "border-gray-200 focus:ring-blue-500"}`}
-              required
-              autoFocus={!!fetchError}
-            />
+            <div className="flex gap-2">
+              {currencySelect(currentCurrency, setCurrentCurrency, "current-currency")}
+              <input
+                type="number"
+                value={currentPrice}
+                onChange={e => { setCurrentPrice(e.target.value); if (fetchError) setFetchError(null); }}
+                placeholder={currentCurrency === "JPY" ? "3200" : "155.00"}
+                min={0}
+                step="0.0001"
+                className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fetchError ? "border-orange-400 ring-orange-200 focus:ring-orange-400 bg-orange-50" : "border-gray-200 focus:ring-blue-500"}`}
+                required
+                autoFocus={!!fetchError}
+              />
+            </div>
             {fetchError && !currentPrice && (
               <p className="mt-1 text-xs text-orange-600">↑ ここに現在の株価を入力してください</p>
             )}

@@ -5,10 +5,8 @@ export interface QuoteResult {
 }
 
 /**
- * Yahoo Finance Chart API v8 から株価を取得
- * ブラウザから CORS なしでアクセス可能なエンドポイント
- * 日本株: 4桁コード → symbol = "7203.T"
- * 米国株: ティッカーそのまま → "AAPL"
+ * Yahoo Finance Chart API v8 から株価・FXレートを取得
+ * ブラウザから CORS なしでアクセス可能
  */
 async function fetchYahooChart(symbol: string): Promise<number | null> {
   try {
@@ -49,7 +47,6 @@ export async function fetchStockQuote(ticker: string): Promise<QuoteResult | nul
 
   let price = await fetchYahooChart(symbol);
   if (price === null && !isJP) {
-    // 米国として失敗した場合、東証を試す
     price = await fetchYahooChart(`${t}.T`);
     if (price !== null) isJP = true;
   }
@@ -58,29 +55,54 @@ export async function fetchStockQuote(ticker: string): Promise<QuoteResult | nul
   return { name: t, price, currency: isJP ? "JPY" : "USD" };
 }
 
+// Yahoo Finance の為替シンボル（対円）
+const FX_SYMBOLS: Record<string, string> = {
+  USD: "USDJPY=X",
+  EUR: "EURJPY=X",
+  GBP: "GBPJPY=X",
+  AUD: "AUDJPY=X",
+  CAD: "CADJPY=X",
+  CHF: "CHFJPY=X",
+  HKD: "HKDJPY=X",
+  SGD: "SGDJPY=X",
+  CNY: "CNYJPY=X",
+};
+
 /**
- * USD/JPYレートをYahoo Financeから取得
+ * 指定通貨の円レートを取得（JPYなら1を返す）
  */
-export async function fetchUsdJpyRate(): Promise<number | null> {
-  return fetchYahooChart("USDJPY=X");
+export async function fetchFxRate(currencyCode: string): Promise<number | null> {
+  if (currencyCode === "JPY") return 1;
+  const sym = FX_SYMBOLS[currencyCode];
+  if (!sym) return null;
+  return fetchYahooChart(sym);
 }
 
 /**
- * 複数銘柄を一括取得（直列、間隔なし）
- * Returns { prices: map of ticker → price, usdJpyRate: USD/JPYレート or null }
+ * 複数銘柄を一括取得 + 使用されている通貨のFXレートも取得
+ * Returns { prices, fxRates } where fxRates is { "USD": 150.5, ... }
  */
 export async function fetchStockQuotesBulk(
   tickers: string[],
+  currencies: string[],
   onProgress?: (done: number, total: number) => void,
-): Promise<{ prices: Map<string, number>; usdJpyRate: number | null }> {
+): Promise<{ prices: Map<string, number>; fxRates: Record<string, number> }> {
   const prices = new Map<string, number>();
   for (let i = 0; i < tickers.length; i++) {
     const q = await fetchStockQuote(tickers[i]);
     if (q) prices.set(tickers[i].toUpperCase(), q.price);
     onProgress?.(i + 1, tickers.length);
   }
-  const usdJpyRate = await fetchUsdJpyRate();
-  return { prices, usdJpyRate };
+
+  // 使用中の非JPY通貨のFXレートを取得
+  const uniqueCurrencies = [...new Set(currencies.filter(c => c && c !== "JPY"))];
+  const fxRates: Record<string, number> = {};
+  for (const cur of uniqueCurrencies) {
+    const rate = await fetchFxRate(cur);
+    if (rate) fxRates[cur] = rate;
+  }
+
+  return { prices, fxRates };
 }
 
 /**
