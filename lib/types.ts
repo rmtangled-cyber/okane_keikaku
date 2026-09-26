@@ -36,6 +36,26 @@ export function calcFutureValue(
   return Math.round(fv);
 }
 
+// 主要通貨リスト
+export const CURRENCIES = [
+  { code: "JPY", symbol: "¥",   name: "円" },
+  { code: "USD", symbol: "$",   name: "米ドル" },
+  { code: "EUR", symbol: "€",   name: "ユーロ" },
+  { code: "GBP", symbol: "£",   name: "英ポンド" },
+  { code: "AUD", symbol: "A$",  name: "豪ドル" },
+  { code: "CAD", symbol: "C$",  name: "カナダドル" },
+  { code: "CHF", symbol: "Fr",  name: "スイスフラン" },
+  { code: "HKD", symbol: "HK$", name: "香港ドル" },
+  { code: "SGD", symbol: "S$",  name: "シンガポールドル" },
+  { code: "CNY", symbol: "¥",   name: "人民元" },
+] as const;
+
+export type CurrencyCode = typeof CURRENCIES[number]["code"];
+
+export function getCurrencySymbol(code: string): string {
+  return CURRENCIES.find(c => c.code === code)?.symbol ?? code;
+}
+
 // 株式保有
 export interface StockHolding {
   id: string;
@@ -43,11 +63,15 @@ export interface StockHolding {
   name: string;          // 銘柄名（例: トヨタ自動車）
   accountType: AccountType;
   memberId?: string; // 名義人（"self", "spouse", または子供のid）
-  currency?: "JPY" | "USD"; // 取得単価・現在値の通貨（省略=JPY）
-  purchasePrice: number; // 取得単価（通貨単位）
+  purchaseCurrency?: string; // 取得単価の通貨（省略=JPY）
+  currentCurrency?: string;  // 現在値の通貨（省略=JPY）
+  purchasePrice: number; // 取得単価
   shares: number;        // 保有株数
-  currentPrice: number;  // 現在値（通貨単位）
-  usdJpyRate?: number;   // 一括取得時のUSD/JPYレート（USD銘柄のみ）
+  currentPrice: number;  // 現在値
+  fxRates?: Record<string, number>; // 通貨コード→円レート（一括取得時に保存）
+  // 旧フィールド（後方互換）
+  currency?: string;
+  usdJpyRate?: number;
   purchaseDate?: string;
   note?: string;
   updatedAt: string;
