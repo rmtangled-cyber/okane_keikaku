@@ -463,6 +463,66 @@ export interface InvestmentProperty {
   updatedAt: string;
 }
 
+// 注文住宅
+export interface CustomHomeBasicInfo {
+  builder: string;
+  builderContact: string;
+  manager: string;
+  structure: string;
+  totalAreaSqm: number;
+  startDate: string;
+  completionDate: string;
+  note: string;
+}
+
+export interface CustomHomeRoom {
+  id: string;
+  name: string;
+  order: number;
+}
+
+export const ANNOTATION_TYPES = ["照明", "コンセント・スイッチ", "クロス", "床材", "エアコン", "TV・LAN", "その他"] as const;
+export type AnnotationType = typeof ANNOTATION_TYPES[number];
+
+export interface FloorPlanAnnotation {
+  id: string;
+  x: number;
+  y: number;
+  type: string;
+  label: string;
+  note: string;
+  roomId: string;
+}
+
+export interface FloorPlan {
+  id: string;
+  title: string;
+  imageBase64: string;
+  order: number;
+  annotations: FloorPlanAnnotation[];
+}
+
+export const ROOM_SPEC_CATEGORIES = ["クロス", "床材", "照明", "建具", "タイル", "その他"] as const;
+export type RoomSpecCategory = typeof ROOM_SPEC_CATEGORIES[number];
+
+export interface RoomSpec {
+  id: string;
+  roomId: string;
+  category: string;
+  item: string;
+  maker: string;
+  quantity: number;
+  unit: string;
+  additionalCost: number;
+  note: string;
+}
+
+export interface CustomHomeData {
+  basicInfo: CustomHomeBasicInfo;
+  rooms: CustomHomeRoom[];
+  roomSpecs: RoomSpec[];
+}
+
 // ライフイベント
 export type LifeEventType =
   | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";

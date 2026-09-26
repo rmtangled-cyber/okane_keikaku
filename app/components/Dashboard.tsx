@@ -71,6 +71,7 @@ import MortgageCalc from "./MortgageCalc";
 import PropertyTaxModal from "./PropertyTaxModal";
 import TaxChecklist from "./TaxChecklist";
 import UserProfileTab from "./UserProfileTab";
+import CustomHomeTab from "./CustomHomeTab";
 import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -88,7 +89,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "貯金" | "投資信託" | "投資物件" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "プロフィール";
+type Tab = "概要" | "株式" | "貯金" | "投資信託" | "投資物件" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "注文住宅" | "プロフィール";
 type TabGroup = "トップ" | "資産" | "生活費" | "マイホーム" | "設定";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
@@ -495,6 +496,7 @@ export default function Dashboard() {
       { key: "生活費", label: "生活費", icon: <BookOpen size={13} /> },
     ]},
     { group: "マイホーム", icon: <Building2 size={14} />, tabs: [
+      { key: "注文住宅",    label: "注文住宅",    icon: <Building2 size={13} /> },
       { key: "住宅ローン",  label: "住宅ローン",  icon: <Building2 size={13} /> },
       { key: "固定資産税",  label: "固定資産税",  icon: <Landmark size={13} /> },
       { key: "太陽光",      label: "太陽光",      icon: <Sun size={13} /> },
@@ -2005,6 +2007,9 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* ── 注文住宅 ──────────────────────────────────── */}
+        {tab === "注文住宅" && <CustomHomeTab />}
 
         {/* ── 太陽光 ───────────────────────────────────── */}
         {tab === "太陽光" && <SolarCalc />}
