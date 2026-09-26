@@ -45,6 +45,7 @@ import {
   clearAllUserData,
 } from "@/lib/storage";
 import { calcTakeHome } from "@/lib/taxCalc";
+import { fetchStockQuotesBulk } from "@/lib/marketData";
 import { calcEqualPayment, loanEndYM, loanCurrentStatus, loanPaymentForYear, mortgageMonthlyPaymentByYear, mortgageMonthlyPaymentWithDrawdown } from "@/lib/loanCalc";
 import AssetCard from "./AssetCard";
 import AssetModal from "./AssetModal";
@@ -726,6 +727,39 @@ export default function Dashboard() {
   const handleDeleteStock = useCallback((id: string) => {
     setStocks(prev => { const next = prev.filter(s => s.id !== id); saveStocks(next); return next; });
   }, []);
+
+  const [stockFetching, setStockFetching] = useState(false);
+  const [stockFetchProgress, setStockFetchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [stockFetchError, setStockFetchError] = useState<string | null>(null);
+
+  const handleBulkFetchStocks = useCallback(async () => {
+    if (stocks.length === 0 || stockFetching) return;
+    setStockFetching(true);
+    setStockFetchError(null);
+    setStockFetchProgress({ done: 0, total: stocks.length });
+    const tickers = stocks.map(s => s.ticker);
+    const prices = await fetchStockQuotesBulk(tickers, (done, total) => {
+      setStockFetchProgress({ done, total });
+    });
+    setStockFetching(false);
+    setStockFetchProgress(null);
+    if (prices.size === 0) {
+      setStockFetchError("株価の取得に失敗しました。ネットワークを確認してください。");
+      return;
+    }
+    setStocks(prev => {
+      const next = prev.map(s => {
+        const p = prices.get(s.ticker.toUpperCase());
+        return p != null ? { ...s, currentPrice: p, updatedAt: new Date().toISOString() } : s;
+      });
+      saveStocks(next);
+      return next;
+    });
+    const failed = tickers.filter(t => !prices.has(t.toUpperCase()));
+    if (failed.length > 0) {
+      setStockFetchError(`取得できなかった銘柄: ${failed.join(", ")}`);
+    }
+  }, [stocks, stockFetching]);
 
   const handleSaveFund = useCallback((data: Omit<FundHolding, "id" | "updatedAt">) => {
     setFunds(prev => {
@@ -1472,6 +1506,32 @@ export default function Dashboard() {
               <div><div className="text-xs text-gray-400">税引後手取り</div><div className="font-bold text-gray-700">¥{(stocksTotal - stocksTax).toLocaleString()}</div></div>
               <div className="text-xs text-gray-400 self-end w-full">※特定・一般口座のみ 20.315%</div>
             </div>
+
+            {/* 操作ボタン行 */}
+            <div className="flex flex-wrap items-center gap-2">
+              {!viewerOwnerUid && (
+                <button onClick={() => { setEditingStock(null); setShowStockModal(true); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors">
+                  <Plus size={15} />銘柄を追加
+                </button>
+              )}
+              {stocks.length > 0 && !viewerOwnerUid && (
+                <button
+                  onClick={handleBulkFetchStocks}
+                  disabled={stockFetching}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-60"
+                >
+                  {stockFetching
+                    ? <><RefreshCw size={15} className="animate-spin" />取得中 {stockFetchProgress ? `${stockFetchProgress.done}/${stockFetchProgress.total}` : ""}…</>
+                    : <><RefreshCw size={15} />現在値を一括取得</>
+                  }
+                </button>
+              )}
+            </div>
+            {stockFetchError && (
+              <p className="text-xs text-orange-600 bg-orange-50 rounded-lg px-3 py-2">{stockFetchError}</p>
+            )}
+
             {stocks.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400 shadow-sm">
                 <TrendingUp size={32} className="mx-auto mb-3 text-gray-200" /><p className="text-sm">株式保有がありません</p>
