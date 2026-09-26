@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { StockHolding, AccountType, CURRENCIES } from "@/lib/types";
-import { fetchStockQuote } from "@/lib/marketData";
-import { X, RefreshCw, Loader2 } from "lucide-react";
+import { X } from "lucide-react";
 
 const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
@@ -30,8 +29,6 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
   const [currentPrice, setCurrentPrice] = useState("");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [note, setNote] = useState("");
-  const [fetching, setFetching] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (stock) {
@@ -39,43 +36,23 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       setName(stock.name);
       setAccountType(stock.accountType);
       setMemberId(stock.memberId);
-      // 旧フィールド currency からの移行
       const legacyCur = stock.currency === "USD" ? "USD" : "JPY";
       setPurchaseCurrency(stock.purchaseCurrency ?? legacyCur);
       setCurrentCurrency(stock.currentCurrency ?? legacyCur);
       setPurchasePrice(String(stock.purchasePrice));
       setShares(String(stock.shares));
-      setCurrentPrice(String(stock.currentPrice));
+      setCurrentPrice(stock.currentPrice ? String(stock.currentPrice) : "");
       setPurchaseDate(stock.purchaseDate ?? "");
       setNote(stock.note ?? "");
     }
   }, [stock]);
 
-  async function lookupTicker(t: string) {
-    if (!t.trim()) return;
-    setFetching(true);
-    setFetchError(null);
-    const result = await fetchStockQuote(t);
-    setFetching(false);
-    if (result) {
-      if (!name) setName(result.name);
-      setCurrentPrice(String(result.price % 1 === 0 ? result.price : result.price.toFixed(2)));
-      // 取得した通貨を自動セット
-      if (result.currency === "USD") {
-        setCurrentCurrency("USD");
-        if (!stock) setPurchaseCurrency("USD");
-      }
-    } else {
-      setFetchError("株価を自動取得できませんでした。下の「現在値」欄に手動で入力してください。");
-    }
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const pp = parseFloat(purchasePrice);
     const sh = parseFloat(shares);
-    const cp = parseFloat(currentPrice);
-    if (!ticker || !name || isNaN(pp) || isNaN(sh) || isNaN(cp)) return;
+    const cp = currentPrice ? parseFloat(currentPrice) : 0;
+    if (!ticker || !name || isNaN(pp) || isNaN(sh)) return;
     onSave({
       ticker: ticker.toUpperCase(),
       name, accountType,
@@ -84,7 +61,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
       currentCurrency,
       purchasePrice: pp,
       shares: sh,
-      currentPrice: cp,
+      currentPrice: isNaN(cp) ? 0 : cp,
       purchaseDate: purchaseDate || undefined,
       note: note || undefined,
     });
@@ -148,20 +125,11 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
               <input
                 type="text"
                 value={ticker}
-                onChange={e => { setTicker(e.target.value); setFetchError(null); }}
-                onBlur={e => lookupTicker(e.target.value)}
+                onChange={e => setTicker(e.target.value)}
                 placeholder="7203"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
-              {fetching && (
-                <div className="flex items-center gap-1 mt-1 text-xs text-blue-500">
-                  <Loader2 size={11} className="animate-spin" /> 取得中…
-                </div>
-              )}
-              {fetchError && (
-                <div className="mt-1 text-xs text-orange-500">{fetchError}</div>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">口座種別</label>
@@ -219,37 +187,24 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
             />
           </div>
 
-          {/* 現在値 */}
+          {/* 現在値（任意） */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               現在値
-              <button
-                type="button"
-                onClick={() => lookupTicker(ticker)}
-                disabled={fetching || !ticker}
-                className="ml-2 inline-flex items-center gap-0.5 text-xs text-blue-500 hover:text-blue-700 disabled:opacity-40"
-              >
-                {fetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                再取得
-              </button>
+              <span className="ml-1 text-xs font-normal text-gray-400">任意・一括取得で自動更新</span>
             </label>
             <div className="flex gap-2">
               {currencySelect(currentCurrency, setCurrentCurrency, "current-currency")}
               <input
                 type="number"
                 value={currentPrice}
-                onChange={e => { setCurrentPrice(e.target.value); if (fetchError) setFetchError(null); }}
+                onChange={e => setCurrentPrice(e.target.value)}
                 placeholder={currentCurrency === "JPY" ? "3200" : "155.00"}
                 min={0}
                 step="0.0001"
-                className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fetchError ? "border-orange-400 ring-orange-200 focus:ring-orange-400 bg-orange-50" : "border-gray-200 focus:ring-blue-500"}`}
-                required
-                autoFocus={!!fetchError}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            {fetchError && !currentPrice && (
-              <p className="mt-1 text-xs text-orange-600">↑ ここに現在の株価を入力してください</p>
-            )}
           </div>
 
           <div>
