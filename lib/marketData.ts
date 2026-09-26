@@ -5,23 +5,40 @@ export interface QuoteResult {
 }
 
 /**
- * Yahoo Finance Chart API v8 から株価・FXレートを取得
- * ブラウザから CORS なしでアクセス可能
+ * Yahoo Finance Chart API v8 から株価を取得
+ * 直接アクセスが CORS でブロックされる場合は allorigins.win プロキシ経由にフォールバック
  */
 async function fetchYahooChart(symbol: string): Promise<number | null> {
+  const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+
+  async function parseYahoo(res: Response): Promise<number | null> {
+    if (!res.ok) return null;
+    try {
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      if (!result) return null;
+      const price = result.meta?.regularMarketPrice ?? result.meta?.chartPreviousClose;
+      return price && price !== 0 ? price : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 1st: 直接アクセス
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
+    const res = await fetch(yahooUrl, {
+      signal: AbortSignal.timeout(8000),
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const result = json?.chart?.result?.[0];
-    if (!result) return null;
-    const price = result.meta?.regularMarketPrice ?? result.meta?.chartPreviousClose;
-    if (!price || price === 0) return null;
-    return price;
+    const price = await parseYahoo(res);
+    if (price !== null) return price;
+  } catch { /* CORS or network error → fallback */ }
+
+  // 2nd: allorigins.win CORS プロキシ経由
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    return await parseYahoo(res);
   } catch {
     return null;
   }
@@ -55,32 +72,41 @@ export async function fetchStockQuote(ticker: string): Promise<QuoteResult | nul
   return { name: t, price, currency: isJP ? "JPY" : "USD" };
 }
 
-// Yahoo Finance の為替シンボル（対円）
-const FX_SYMBOLS: Record<string, string> = {
-  USD: "USDJPY=X",
-  EUR: "EURJPY=X",
-  GBP: "GBPJPY=X",
-  AUD: "AUDJPY=X",
-  CAD: "CADJPY=X",
-  CHF: "CHFJPY=X",
-  HKD: "HKDJPY=X",
-  SGD: "SGDJPY=X",
-  CNY: "CNYJPY=X",
-};
-
 /**
- * 指定通貨の円レートを取得（JPYなら1を返す）
+ * 複数通貨の対円レートを一括取得
+ * Frankfurter API（OSS・CORS対応・認証不要）を使用
+ * https://www.frankfurter.app/
+ *
+ * Frankfurter は ECB レートをベースにした主要通貨をカバー
+ * (USD/EUR/GBP/AUD/CAD/CHF/HKD/SGD/CNY 等)
  */
-export async function fetchFxRate(currencyCode: string): Promise<number | null> {
-  if (currencyCode === "JPY") return 1;
-  const sym = FX_SYMBOLS[currencyCode];
-  if (!sym) return null;
-  return fetchYahooChart(sym);
+async function fetchFxRatesFromFrankfurter(
+  currencies: string[],
+): Promise<Record<string, number>> {
+  const nonJPY = [...new Set(currencies.filter(c => c && c !== "JPY"))];
+  if (nonJPY.length === 0) return {};
+
+  try {
+    // base=JPY → 各通貨に対する1JPYの価値 → 逆数 = 1通貨あたりの円
+    const res = await fetch(
+      `https://api.frankfurter.app/latest?base=JPY&symbols=${nonJPY.join(",")}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!res.ok) return {};
+    const json = await res.json();
+    const rates: Record<string, number> = {};
+    for (const [cur, rate] of Object.entries(json.rates as Record<string, number>)) {
+      if (rate > 0) rates[cur] = 1 / rate; // 1JPY=0.0067USD → 1USD=149JPY
+    }
+    return rates;
+  } catch {
+    return {};
+  }
 }
 
 /**
- * 複数銘柄を一括取得 + 使用されている通貨のFXレートも取得
- * Returns { prices, fxRates } where fxRates is { "USD": 150.5, ... }
+ * 複数銘柄を一括取得 + 使用中の通貨のFXレートも取得
+ * Returns { prices, fxRates } where fxRates は { "USD": 150.5, ... } (対円)
  */
 export async function fetchStockQuotesBulk(
   tickers: string[],
@@ -94,20 +120,12 @@ export async function fetchStockQuotesBulk(
     onProgress?.(i + 1, tickers.length);
   }
 
-  // 使用中の非JPY通貨のFXレートを取得
-  const uniqueCurrencies = [...new Set(currencies.filter(c => c && c !== "JPY"))];
-  const fxRates: Record<string, number> = {};
-  for (const cur of uniqueCurrencies) {
-    const rate = await fetchFxRate(cur);
-    if (rate) fxRates[cur] = rate;
-  }
-
+  const fxRates = await fetchFxRatesFromFrankfurter(currencies);
   return { prices, fxRates };
 }
 
 /**
- * 投資信託（ファンドコード8桁）の基準価額を取得
- * → 手動入力を推奨
+ * 投資信託の基準価額取得 → 手動入力を推奨
  */
 export async function fetchFundQuote(_code: string): Promise<QuoteResult | null> {
   return null;
