@@ -48,7 +48,8 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
   }
 
   function addChild() {
-    setFamilyMembers(prev => [...prev, { type: "child", birthYear: currentYear - 5, dependentOf: "self" }]);
+    const id = `child_${Date.now()}`;
+    setFamilyMembers(prev => [...prev, { id, type: "child", birthYear: currentYear - 5, dependentOf: "self" }]);
   }
 
   function updateChild(idx: number, patch: Partial<FamilyMember>) {
@@ -186,8 +187,18 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
 
               {/* 子供 */}
               {children.map((child, idx) => (
-                <div key={idx} className="flex flex-wrap items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
-                  <span className="text-sm font-medium text-gray-700 min-w-[64px]">子供 {idx + 1}</span>
+                <div key={child.id ?? idx} className="flex flex-wrap items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                  <span className="text-sm font-medium text-gray-700 min-w-[40px]">子供 {idx + 1}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">名前:</span>
+                    <input
+                      type="text"
+                      value={child.name ?? ""}
+                      onChange={e => updateChild(idx, { name: e.target.value })}
+                      placeholder="ニックネーム（任意）"
+                      className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">生年:</span>
                     <div className="relative">
@@ -211,11 +222,11 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
                     <span className="text-xs text-gray-500">扶養:</span>
                     <select
                       value={child.dependentOf ?? "self"}
-                      onChange={e => updateChild(idx, { dependentOf: e.target.value as "self" | "spouse" })}
+                      onChange={e => updateChild(idx, { dependentOf: e.target.value })}
                       className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                     >
-                      <option value="self">自分</option>
-                      {hasSpouse && <option value="spouse">配偶者</option>}
+                      <option value="self">{displayName || "自分"}</option>
+                      {hasSpouse && <option value="spouse">{spouse?.name || "配偶者"}</option>}
                     </select>
                   </div>
                   <button type="button" onClick={() => removeChild(idx)}
@@ -237,9 +248,9 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
           {(selfDependents > 0 || spouseDependents > 0) && (
             <div className="bg-teal-50 rounded-xl px-4 py-3 text-sm text-teal-700 space-y-1">
               <div>
-                自分の扶養家族: <span className="font-semibold">{selfDependents}人</span>
+                {displayName || "自分"}の扶養家族: <span className="font-semibold">{selfDependents}人</span>
                 {spouseDependents > 0 && (
-                  <span className="ml-3">配偶者の扶養家族: <span className="font-semibold">{spouseDependents}人</span></span>
+                  <span className="ml-3">{spouse?.name || "配偶者"}の扶養家族: <span className="font-semibold">{spouseDependents}人</span></span>
                 )}
               </div>
               <p className="text-xs text-teal-500">収入プロファイルの手取り計算に使われます</p>

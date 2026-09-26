@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc,
+  collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc, query, orderBy,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount, InvestmentProperty } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount, InvestmentProperty, CustomHomeData, FloorPlan } from "./types";
 
 // ── Viewer mode state ─────────────────────────────────────────────────────────
 
@@ -304,6 +304,45 @@ export async function removeViewerEmail(viewerEmail: string): Promise<void> {
   const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
   await setDoc(emailsRef, { emails: current.filter(e => e !== viewerEmail) });
   try { await deleteDoc(doc(db, "viewerIndex", viewerEmail)); } catch { /* best effort */ }
+}
+
+// ── 注文住宅 ──────────────────────────────────────────────────────────────────
+
+export async function loadCustomHomeData(): Promise<CustomHomeData | null> {
+  const uid = currentDataUid();
+  try {
+    const snap = await getDoc(doc(db, "users", uid, "customHome", "default"));
+    return snap.exists() ? (snap.data() as CustomHomeData) : null;
+  } catch { return null; }
+}
+
+export async function saveCustomHomeData(data: CustomHomeData): Promise<void> {
+  if (isViewerMode()) return;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  await setDoc(doc(db, "users", uid, "customHome", "default"), stripUndefined(data));
+}
+
+export async function loadFloorPlans(): Promise<FloorPlan[]> {
+  const uid = currentDataUid();
+  try {
+    const snap = await getDocs(query(collection(db, "users", uid, "floorPlans"), orderBy("order")));
+    return snap.docs.map(d => d.data() as FloorPlan);
+  } catch { return []; }
+}
+
+export async function saveFloorPlan(plan: FloorPlan): Promise<void> {
+  if (isViewerMode()) return;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  await setDoc(doc(db, "users", uid, "floorPlans", plan.id), stripUndefined(plan));
+}
+
+export async function deleteFloorPlan(id: string): Promise<void> {
+  if (isViewerMode()) return;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  await deleteDoc(doc(db, "users", uid, "floorPlans", id));
 }
 
 export async function loadOwnerDisplayName(ownerUid: string): Promise<string | null> {

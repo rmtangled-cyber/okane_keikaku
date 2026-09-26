@@ -9,7 +9,7 @@ const ACCOUNT_TYPES: AccountType[] = [
   "特定口座", "NISA（成長投資枠）", "NISA（つみたて投資枠）", "一般口座", "iDeCo",
 ];
 
-interface MemberOption { id: "self" | "spouse"; label: string; }
+interface MemberOption { id: string; label: string; }
 
 interface Props {
   stock?: StockHolding | null;
@@ -22,7 +22,7 @@ export default function StockModal({ stock, memberOptions, onSave, onClose }: Pr
   const [ticker, setTicker] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("特定口座");
-  const [memberId, setMemberId] = useState<"self" | "spouse" | undefined>(undefined);
+  const [memberId, setMemberId] = useState<string | undefined>(undefined);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [shares, setShares] = useState("");
   const [currentPrice, setCurrentPrice] = useState("");

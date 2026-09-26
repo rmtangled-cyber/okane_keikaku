@@ -5,7 +5,7 @@ import { X, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import type { MortgageProperty, PropertyCostItem, PrepaymentEntry } from "../../lib/types";
 
 export interface BorrowerOption {
-  id: "self" | "spouse";
+  id: string;
   label: string;
 }
 
@@ -19,7 +19,7 @@ interface Props {
 
 export default function MortgagePropertyModal({ property, borrowerOptions, currentBaseRate, onSave, onClose }: Props) {
   const [propertyName, setPropertyName] = useState(property?.propertyName ?? "");
-  const [borrowerId, setBorrowerId] = useState<"self" | "spouse" | "">(property?.borrowerId ?? "self");
+  const [borrowerId, setBorrowerId] = useState<string>(property?.borrowerId ?? "self");
   const [bankName, setBankName] = useState(property?.bankName ?? "");
   const [isFixed, setIsFixed] = useState(property?.isFixed ?? false);
   const [discountRate, setDiscountRate] = useState(property?.discountRate ?? "1.4");
