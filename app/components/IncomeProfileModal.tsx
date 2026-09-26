@@ -14,7 +14,7 @@ interface Props {
 }
 
 function calcDependentsForMember(
-  memberId: "self" | "spouse",
+  memberId: string,
   activeFromYear: number,
   userProfile: UserProfile,
 ): number {
@@ -37,7 +37,7 @@ function calcDependentsForMember(
 
 export default function IncomeProfileModal({ profile, userProfile, onSave, onClose }: Props) {
   const [incomeType, setIncomeType] = useState<"salary" | "pension">("salary");
-  const [memberId, setMemberId] = useState<"self" | "spouse">("self");
+  const [memberId, setMemberId] = useState<string>("self");
   const [name, setName] = useState("");
   // salary fields
   const [grossAnnual, setGrossAnnual] = useState("");
@@ -233,20 +233,25 @@ export default function IncomeProfileModal({ profile, userProfile, onSave, onClo
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">誰の収入</label>
               <div className="flex gap-2">
-                {(["self", "spouse"] as const).map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMemberId(m)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      memberId === m
-                        ? "bg-teal-600 text-white border-teal-600"
-                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {m === "self" ? (userProfile?.displayName ?? "自分") : "配偶者"}
-                  </button>
-                ))}
+                    {(["self", "spouse"] as const).map(m => {
+                  const label = m === "self"
+                    ? (userProfile?.displayName ?? "自分")
+                    : (userProfile?.familyMembers.find(fm => fm.type === "spouse")?.name || "配偶者");
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMemberId(m)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        memberId === m
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

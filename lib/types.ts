@@ -42,7 +42,7 @@ export interface StockHolding {
   ticker: string;        // 銘柄コード（例: 7203）
   name: string;          // 銘柄名（例: トヨタ自動車）
   accountType: AccountType;
-  memberId?: "self" | "spouse"; // 名義人
+  memberId?: string; // 名義人（"self", "spouse", または子供のid）
   purchasePrice: number; // 取得単価（円）
   shares: number;        // 保有株数
   currentPrice: number;  // 現在値（手動入力、円）
@@ -57,7 +57,7 @@ export interface FundHolding {
   name: string;                  // ファンド名
   fundCode?: string;             // ファンドコード（8桁英数字、任意）
   accountType: AccountType;
-  memberId?: "self" | "spouse"; // 名義人
+  memberId?: string; // 名義人（"self", "spouse", または子供のid）
   purchaseAmount: number;        // 取得金額合計（円）
   currentValue: number;          // 現在評価額（円）
   expectedAnnualReturn: number;  // 期待年利（%）
@@ -89,7 +89,7 @@ export interface SavingsAccount {
   balance: number;        // 残高（円）
   interestRate: number;   // 金利（%）
   accountType: SavingsAccountType;
-  memberId?: "self" | "spouse";
+  memberId?: string; // 名義人（"self", "spouse", または子供のid）
   note?: string;
   updatedAt: string;
 }
@@ -131,11 +131,12 @@ export interface MonthlyExpense {
 
 // ユーザープロフィール（共通設定）
 export interface FamilyMember {
+  id?: string;                // 子供は一意ID（"spouse"は固定）
   type: "spouse" | "child";
   name?: string;
   birthYear: number;
   isDependent?: boolean;      // spouse only: 扶養家族かどうか
-  dependentOf?: "self" | "spouse"; // child only: どちらの親の扶養か
+  dependentOf?: string;       // child only: "self" | "spouse" | 子供のid
 }
 
 export interface UserProfile {
@@ -147,11 +148,34 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export function getMemberLabel(memberId: string | undefined, profile: UserProfile | null): string {
+  if (!memberId || memberId === "self") return profile?.displayName ?? "自分";
+  if (!profile) return memberId === "spouse" ? "配偶者" : memberId;
+  const member = profile.familyMembers.find(m =>
+    m.type === "spouse" ? memberId === "spouse" : m.id === memberId
+  );
+  if (!member) return memberId;
+  return member.name || (member.type === "spouse" ? "配偶者" : "子供");
+}
+
+export function getMemberOptions(profile: UserProfile | null): { id: string; label: string }[] {
+  const opts: { id: string; label: string }[] = [
+    { id: "self", label: profile?.displayName ?? "自分" },
+  ];
+  if (!profile) return opts;
+  const spouse = profile.familyMembers.find(m => m.type === "spouse");
+  if (spouse) opts.push({ id: "spouse", label: spouse.name || "配偶者" });
+  for (const c of profile.familyMembers.filter(m => m.type === "child")) {
+    if (c.id) opts.push({ id: c.id, label: c.name || "子供" });
+  }
+  return opts;
+}
+
 // 収入プロファイル（給与・年金）
 export interface IncomeProfile {
   id: string;
   name: string;            // ラベル（例: "現職"）
-  memberId?: "self" | "spouse"; // 誰の収入か（省略=自分）
+  memberId?: string; // 誰の収入か（"self"=自分, "spouse"=配偶者、省略=自分）
   incomeType?: "salary" | "pension"; // 収入の種類（省略=給与）
   grossMonthly: number;    // 額面月収（円）= grossAnnual/12 で自動計算
   grossAnnual?: number;    // 年収・基本給（ボーナス除く、円）
@@ -235,7 +259,7 @@ export interface RateScenarioEntry {
 export interface MortgageProperty {
   id: string;
   propertyName: string;
-  borrowerId?: "self" | "spouse"; // 借入名義人
+  borrowerId?: string; // 借入名義人（"self", "spouse"）
   bankName?: string;    // 金融機関名
   bankRate?: string;    // 固定金利（%）or レガシー変動金利
   discountRate?: string; // 優遇幅（%）変動金利物件
@@ -449,7 +473,7 @@ export interface InvestmentProperty {
   name: string;
   location?: string;
   propertyType: InvestmentPropertyType;
-  memberId?: "self" | "spouse";
+  memberId?: string; // 名義人（"self", "spouse"）
   purchasePriceMan: number;    // 購入価格（万円）
   purchaseDate?: string;       // "YYYY-MM-DD"
   loanBalanceMan?: number;     // 借入残高（万円）

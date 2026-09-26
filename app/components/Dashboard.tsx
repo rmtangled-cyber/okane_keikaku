@@ -20,6 +20,7 @@ import {
   UserProfile, PropertyTaxEntry, calcPropertyTax, calcPropertyTaxForYear,
   SavingsAccount, SavingsAccountType,
   InvestmentProperty, InvestmentPropertyType,
+  getMemberLabel, getMemberOptions,
 } from "@/lib/types";
 import { applyMonthlyContributions } from "@/lib/autoContrib";
 import {
@@ -682,14 +683,7 @@ export default function Dashboard() {
     ).map(([name, value]) => ({ name, value: value as number })),
   ].filter(d => d.value > 0);
 
-  const memberOptions = useMemo(() => {
-    const opts: { id: "self" | "spouse"; label: string }[] = [
-      { id: "self", label: userProfile?.displayName || "自分" },
-    ];
-    const spouse = userProfile?.familyMembers?.find(m => m.type === "spouse");
-    if (spouse) opts.push({ id: "spouse", label: spouse.name || "配偶者" });
-    return opts;
-  }, [userProfile]);
+  const memberOptions = useMemo(() => getMemberOptions(userProfile), [userProfile]);
 
   // ── Life Plan Simulation ──────────────────────────────
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
@@ -1199,9 +1193,9 @@ export default function Dashboard() {
                       if (userProfile) {
                         lines.push({ key: userProfile.displayName ?? "自分", age: year - userProfile.birthYear });
                         const spouse = userProfile.familyMembers.find(m => m.type === "spouse");
-                        if (spouse) lines.push({ key: "配偶者", age: year - spouse.birthYear });
+                        if (spouse) lines.push({ key: spouse.name || "配偶者", age: year - spouse.birthYear });
                         userProfile.familyMembers.filter(m => m.type === "child").forEach((c, i) => {
-                          if (year >= c.birthYear) lines.push({ key: `子${i + 1}`, age: year - c.birthYear });
+                          if (year >= c.birthYear) lines.push({ key: c.name || `子${i + 1}`, age: year - c.birthYear });
                         });
                       }
                       return (
@@ -1528,7 +1522,7 @@ export default function Dashboard() {
                           </span>
                           {acct.memberId && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                              {acct.memberId === "self" ? "本人" : "配偶者"}
+                              {getMemberLabel(acct.memberId, userProfile)}
                             </span>
                           )}
                         </div>
@@ -1566,6 +1560,7 @@ export default function Dashboard() {
             {showSavingsModal && (
               <SavingsAccountModal
                 account={editingSavings}
+                userProfile={userProfile}
                 onClose={() => setShowSavingsModal(false)}
                 onSave={(acct) => {
                   const updated = editingSavings
@@ -1642,6 +1637,7 @@ export default function Dashboard() {
                     return ageA - ageB;
                   }).map(p => (
                     <IncomeProfileCard key={p.id} profile={p}
+                      memberLabel={p.memberId && p.memberId !== "self" ? getMemberLabel(p.memberId, userProfile) : undefined}
                       onEdit={p => { setEditingIncome(p); setShowIncomeModal(true); }}
                       onDelete={handleDeleteIncome} />
                   ))}
@@ -2066,8 +2062,9 @@ export default function Dashboard() {
 
 // ── SavingsAccountModal ───────────────────────────────────────────────────────
 
-function SavingsAccountModal({ account, onClose, onSave }: {
+function SavingsAccountModal({ account, userProfile, onClose, onSave }: {
   account: SavingsAccount | null;
+  userProfile: UserProfile | null;
   onClose: () => void;
   onSave: (acct: SavingsAccount) => void;
 }) {
@@ -2076,7 +2073,7 @@ function SavingsAccountModal({ account, onClose, onSave }: {
   const [balance, setBalance] = useState(account ? String(account.balance) : "");
   const [interestRate, setInterestRate] = useState(account ? String(account.interestRate) : "0");
   const [accountType, setAccountType] = useState<SavingsAccountType>(account?.accountType ?? "普通");
-  const [memberId, setMemberId] = useState<"self" | "spouse" | "">(account?.memberId ?? "");
+  const [memberId, setMemberId] = useState<string>(account?.memberId ?? "");
   const [note, setNote] = useState(account?.note ?? "");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -2142,11 +2139,12 @@ function SavingsAccountModal({ account, onClose, onSave }: {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">名義人</label>
-            <select value={memberId} onChange={e => setMemberId(e.target.value as "self" | "spouse" | "")}
+            <select value={memberId} onChange={e => setMemberId(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">未設定</option>
-              <option value="self">本人</option>
-              <option value="spouse">配偶者</option>
+              {getMemberOptions(userProfile).map(o => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -2177,14 +2175,14 @@ const INVESTMENT_PROPERTY_TYPES: InvestmentPropertyType[] = ["区分マンショ
 
 function InvestmentPropertyModal({ property, memberOptions, onClose, onSave }: {
   property: InvestmentProperty | null;
-  memberOptions: { id: "self" | "spouse"; label: string }[];
+  memberOptions: { id: string; label: string }[];
   onClose: () => void;
   onSave: (p: InvestmentProperty) => void;
 }) {
   const [name, setName] = useState(property?.name ?? "");
   const [location, setLocation] = useState(property?.location ?? "");
   const [propertyType, setPropertyType] = useState<InvestmentPropertyType>(property?.propertyType ?? "区分マンション");
-  const [memberId, setMemberId] = useState<"self" | "spouse" | "">(property?.memberId ?? "");
+  const [memberId, setMemberId] = useState<string>(property?.memberId ?? "");
   const [purchasePriceMan, setPurchasePriceMan] = useState(property ? String(property.purchasePriceMan) : "");
   const [purchaseDate, setPurchaseDate] = useState(property?.purchaseDate ?? "");
   const [loanBalanceMan, setLoanBalanceMan] = useState(property?.loanBalanceMan != null ? String(property.loanBalanceMan) : "");
@@ -2249,7 +2247,7 @@ function InvestmentPropertyModal({ property, memberOptions, onClose, onSave }: {
             {memberOptions.length > 1 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">名義人</label>
-                <select value={memberId} onChange={e => setMemberId(e.target.value as "self" | "spouse" | "")}
+                <select value={memberId} onChange={e => setMemberId(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">未設定</option>
                   {memberOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
