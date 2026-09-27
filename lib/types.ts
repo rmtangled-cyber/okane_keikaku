@@ -550,6 +550,7 @@ export interface FloorPlan {
   id: string;
   title: string;
   imageBase64: string;
+  floor: number; // 1〜N: 各フロア, 0: その他
   order: number;
   annotations: FloorPlanAnnotation[];
 }
