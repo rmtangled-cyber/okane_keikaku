@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine,
   AreaChart, Area, BarChart, Bar, ComposedChart,
 } from "recharts";
@@ -537,6 +537,7 @@ export default function Dashboard() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
   const [inflationRate, setInflationRate] = useState<number>(0.005);
+  const [manualReturnRate, setManualReturnRate] = useState<number | null>(null);
   // 生活費カテゴリ入力用の一時state（name → 入力文字列）
   const [expenseInputs, setExpenseInputs] = useState<Record<string, string>>({});
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
@@ -724,9 +725,10 @@ export default function Dashboard() {
   const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
   const simYears = Math.max(10, 100 - selfAge);
   const propertyTaxAnnual = propertyTaxEntries.reduce((s, e) => s + calcPropertyTax(e).total, 0);
+  const effectiveReturnRate = manualReturnRate ?? weightedReturn;
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
-    lifeEvents, weightedReturn, currentYear, simYears, mortgageSimPlan,
+    lifeEvents, effectiveReturnRate, currentYear, simYears, mortgageSimPlan,
     propertyTaxEntries, inflationRate, funds,
     mortgageProperties,
     parseFloat(mortgageSimPlan?.sharedBaseRate ?? "2.475") || 2.475,
@@ -1238,19 +1240,46 @@ export default function Dashboard() {
               </h3>
               <p className="text-xs text-gray-400 mb-3">
                 年齢別収入・ローン・保険・ライフイベントを考慮した試算
-                {weightedReturn > 0 && `（加重平均リターン ${(weightedReturn * 100).toFixed(1)}%/年）`}
               </p>
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs text-gray-500 shrink-0">生活費インフレ率</span>
-                <input
-                  type="range" min={0} max={5} step={0.5}
-                  value={inflationRate * 100}
-                  onChange={e => setInflationRate(parseFloat(e.target.value) / 100)}
-                  className="flex-1 accent-violet-500"
-                />
-                <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
-                  {inflationRate === 0 ? "なし" : `${(inflationRate * 100).toFixed(1)}%`}
-                </span>
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 shrink-0 w-28">生活費インフレ率</span>
+                  <input
+                    type="range" min={0} max={5} step={0.5}
+                    value={inflationRate * 100}
+                    onChange={e => setInflationRate(parseFloat(e.target.value) / 100)}
+                    className="flex-1 accent-violet-500"
+                  />
+                  <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
+                    {inflationRate === 0 ? "なし" : `${(inflationRate * 100).toFixed(1)}%`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 shrink-0 w-28">
+                    投資リターン率
+                    {weightedReturn > 0 && manualReturnRate === null && (
+                      <span className="text-gray-400 ml-1">（自動）</span>
+                    )}
+                  </span>
+                  <input
+                    type="range" min={0} max={10} step={0.5}
+                    value={(manualReturnRate ?? weightedReturn) * 100}
+                    onChange={e => setManualReturnRate(parseFloat(e.target.value) / 100)}
+                    className="flex-1 accent-emerald-500"
+                  />
+                  <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
+                    {((manualReturnRate ?? weightedReturn) * 100).toFixed(1)}%
+                  </span>
+                  {manualReturnRate !== null && (
+                    <button
+                      onClick={() => setManualReturnRate(null)}
+                      className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                      title="自動計算に戻す"
+                    >
+                      リセット
+                    </button>
+                  )}
+                </div>
               </div>
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
                 <ComposedChart data={simData} onClick={(e) => {
@@ -1294,11 +1323,12 @@ export default function Dashboard() {
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} />
+                  } width={52} label={{ value: "総資産", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#8b5cf6" }} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} />
+                  } width={52} label={{ value: "年間純増分", angle: 90, position: "insideRight", offset: 10, fontSize: 9, fill: "#6b7280" }} />
                   <Tooltip content={<LifePlanTooltip />} />
+                  <Legend verticalAlign="top" height={24} formatter={(value) => <span style={{ fontSize: 11, color: "#6b7280" }}>{value}</span>} />
                   {lifeEvents.map(e => (
                     <ReferenceLine yAxisId="left" key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
                       label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
