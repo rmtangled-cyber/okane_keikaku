@@ -1323,12 +1323,11 @@ export default function Dashboard() {
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} label={{ value: "総資産", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#8b5cf6" }} />
+                  } width={52} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} label={{ value: "年間純増分", angle: 90, position: "insideRight", offset: 10, fontSize: 9, fill: "#6b7280" }} />
+                  } width={52} />
                   <Tooltip content={<LifePlanTooltip />} />
-                  <Legend verticalAlign="top" height={24} formatter={(value) => <span style={{ fontSize: 11, color: "#6b7280" }}>{value}</span>} />
                   {lifeEvents.map(e => (
                     <ReferenceLine yAxisId="left" key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
                       label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
@@ -1355,6 +1354,21 @@ export default function Dashboard() {
                   <Area yAxisId="left" type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
                 </ComposedChart>
               </ResponsiveContainer>
+
+              {/* 凡例 */}
+              <div className="flex items-center justify-center gap-6 mt-2 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-8 h-0.5 bg-violet-500 rounded" />
+                  <span className="text-xs text-gray-500">総資産（左軸）</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex gap-0.5">
+                    <div className="w-2 h-3 bg-green-500 rounded-sm opacity-70" />
+                    <div className="w-2 h-3 bg-red-500 rounded-sm opacity-70" />
+                  </div>
+                  <span className="text-xs text-gray-500">年間純増分（右軸）</span>
+                </div>
+              </div>
 
               <div className="grid grid-cols-4 gap-2 mt-4">
                 {[70, 80, 90, 100].map(age => {
