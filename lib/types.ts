@@ -588,8 +588,8 @@ export interface ConstructionTask {
   id: string;
   category: ConstructionCategory;
   name: string;
-  startDate: string;  // "YYYY-MM-DD"
-  endDate: string;    // "YYYY-MM-DD"
+  startDate: string;
+  endDate: string;
   note?: string;
   updatedAt: string;
 }
