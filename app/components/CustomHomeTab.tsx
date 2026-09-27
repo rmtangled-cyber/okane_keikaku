@@ -697,6 +697,7 @@ export default function CustomHomeTab() {
   const [basicDraft, setBasicDraft] = useState(EMPTY_BASIC);
   const [addingPlan, setAddingPlan] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState("");
+  const [planFloor, setPlanFloor] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImageRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -728,7 +729,7 @@ export default function CustomHomeTab() {
   async function handleAddPlan(imageBase64: string) {
     const title = newPlanTitle.trim() || "間取り図";
     const plan: FloorPlan = {
-      id: uid(), title, imageBase64, order: floorPlans.length, annotations: [],
+      id: uid(), title, imageBase64, floor: planFloor, order: floorPlans.length, annotations: [],
     };
     const next = [...floorPlans, plan];
     setFloorPlans(next);
@@ -900,12 +901,24 @@ export default function CustomHomeTab() {
           <h2 className="text-sm font-semibold text-gray-900">間取り図面</h2>
           <div className="flex-1" />
           {!viewingPlan && (
-            <button
-              onClick={() => { setAddingPlan(true); setTimeout(() => fileInputRef.current?.click(), 0); }}
-              className="flex items-center gap-1 text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-            >
-              <Plus size={12} /> 図面を追加
-            </button>
+            <>
+              <select
+                value={planFloor}
+                onChange={e => setPlanFloor(Number(e.target.value))}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {Array.from({ length: data.basicInfo.numFloors ?? 2 }, (_, i) => i + 1).map(f => (
+                  <option key={f} value={f}>{f}F</option>
+                ))}
+                <option value={0}>その他</option>
+              </select>
+              <button
+                onClick={() => { setAddingPlan(true); setTimeout(() => fileInputRef.current?.click(), 0); }}
+                className="flex items-center gap-1 text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              >
+                <Plus size={12} /> 図面を追加
+              </button>
+            </>
           )}
         </div>
 
@@ -937,22 +950,29 @@ export default function CustomHomeTab() {
             onChange={handleFloorPlanChange}
             onBack={() => setViewingPlan(null)}
           />
-        ) : floorPlans.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">図面をアップロードするとマーカーを追加できます</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {floorPlans.map((plan, idx) => (
-              <FloorPlanCard
-                key={plan.id}
-                plan={plan}
-                onOpen={() => setViewingPlan(plan)}
-                onDelete={() => handleDeletePlan(plan.id)}
-                onMoveUp={() => movePlan(plan.id, -1)}
-                onMoveDown={() => movePlan(plan.id, 1)}
-                onRename={title => handleRenamePlan(plan.id, title)}
-              />
-            ))}
-          </div>
+          (() => {
+            const visiblePlans = floorPlans.filter(p => (p.floor ?? 1) === planFloor);
+            return visiblePlans.length === 0 ? (
+              <p className="text-sm text-gray-400 py-6 text-center">
+                {planFloor === 0 ? "その他" : `${planFloor}F`}の図面をアップロードしてください
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {visiblePlans.map((plan) => (
+                  <FloorPlanCard
+                    key={plan.id}
+                    plan={plan}
+                    onOpen={() => setViewingPlan(plan)}
+                    onDelete={() => handleDeletePlan(plan.id)}
+                    onMoveUp={() => movePlan(plan.id, -1)}
+                    onMoveDown={() => movePlan(plan.id, 1)}
+                    onRename={title => handleRenamePlan(plan.id, title)}
+                  />
+                ))}
+              </div>
+            );
+          })()
         )}
       </div>
 
