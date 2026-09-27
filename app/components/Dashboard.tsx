@@ -531,7 +531,7 @@ export default function Dashboard() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
   const [inflationRate, setInflationRate] = useState<number>(0.02);
-  const [manualReturnRate, setManualReturnRate] = useState<number>(0.05);
+  const [manualReturnRate, setManualReturnRate] = useState<number>(0.02);
   // 生活費カテゴリ入力用の一時state（name → 入力文字列）
   const [expenseInputs, setExpenseInputs] = useState<Record<string, string>>({});
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
