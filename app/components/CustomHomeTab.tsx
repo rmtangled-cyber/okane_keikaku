@@ -277,13 +277,23 @@ function AnnotationModal({ annotation, rooms, onSave, onDelete, onClose }: {
 
 // ── FloorPlanCard ─────────────────────────────────────────────────────────────
 
-function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown }: {
+function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown, onRename }: {
   plan: FloorPlan;
   onOpen: () => void;
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onRename: (title: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(plan.title);
+
+  function commitRename() {
+    const t = draft.trim();
+    if (t && t !== plan.title) onRename(t);
+    setEditing(false);
+  }
+
   return (
     <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white">
       <button onClick={onOpen} className="w-full text-left">
@@ -291,8 +301,24 @@ function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown }: {
         <img src={plan.imageBase64} alt={plan.title} className="w-full max-h-48 object-contain bg-gray-50" />
       </button>
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-sm font-medium text-gray-800 flex-1">{plan.title}</span>
-        <span className="text-xs text-gray-400">{plan.annotations.length}件</span>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setEditing(false); }}
+            className="flex-1 border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        ) : (
+          <button
+            onClick={() => { setDraft(plan.title); setEditing(true); }}
+            className="flex-1 text-sm font-medium text-gray-800 text-left hover:text-blue-600"
+          >
+            {plan.title}
+          </button>
+        )}
+        <span className="text-xs text-gray-400 shrink-0">{plan.annotations.length}件</span>
         <button onClick={onMoveUp} className="p-1 text-gray-400 hover:text-gray-700"><ChevronUp size={14} /></button>
         <button onClick={onMoveDown} className="p-1 text-gray-400 hover:text-gray-700"><ChevronDown size={14} /></button>
         <button onClick={onOpen} className="p-1 text-blue-500 hover:text-blue-700"><Edit2 size={14} /></button>
@@ -314,6 +340,8 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
   const [newRoomName, setNewRoomName] = useState("");
   const [editingSpec, setEditingSpec] = useState<RoomSpec | null>(null);
   const [addingToRoomId, setAddingToRoomId] = useState<string | null>(null);
+  const [renamingRoomId, setRenamingRoomId] = useState<string | null>(null);
+  const [roomNameDraft, setRoomNameDraft] = useState("");
 
   function addRoom() {
     const name = newRoomName.trim();
@@ -326,6 +354,19 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
     if (!confirm("この部屋と関連する仕様をすべて削除しますか？")) return;
     onChangeRooms(rooms.filter(r => r.id !== id));
     onChangeSpecs(specs.filter(s => s.roomId !== id));
+  }
+
+  function startRenameRoom(room: CustomHomeRoom) {
+    setRenamingRoomId(room.id);
+    setRoomNameDraft(room.name);
+  }
+
+  function commitRenameRoom() {
+    const name = roomNameDraft.trim();
+    if (name && renamingRoomId) {
+      onChangeRooms(rooms.map(r => r.id === renamingRoomId ? { ...r, name } : r));
+    }
+    setRenamingRoomId(null);
   }
 
   function saveSpec(spec: RoomSpec) {
@@ -383,16 +424,33 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
           return (
             <div key={room.id} className="border border-gray-200 rounded-2xl overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50">
-                <Home size={13} className="text-gray-500" />
-                <span className="text-sm font-semibold text-gray-800 flex-1">{room.name}</span>
+                <Home size={13} className="text-gray-500 shrink-0" />
+                {renamingRoomId === room.id ? (
+                  <input
+                    autoFocus
+                    value={roomNameDraft}
+                    onChange={e => setRoomNameDraft(e.target.value)}
+                    onBlur={commitRenameRoom}
+                    onKeyDown={e => { if (e.key === "Enter") commitRenameRoom(); if (e.key === "Escape") setRenamingRoomId(null); }}
+                    className="flex-1 border border-blue-300 rounded-lg px-2 py-0.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold text-gray-800 flex-1">{room.name}</span>
+                )}
                 {roomAnnotations.length > 0 && (
-                  <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">
+                  <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full shrink-0">
                     図面マーカー {roomAnnotations.length}件
                   </span>
                 )}
                 {roomTotal > 0 && (
-                  <span className="text-xs text-rose-500 font-medium">¥{roomTotal.toLocaleString()}</span>
+                  <span className="text-xs text-rose-500 font-medium shrink-0">¥{roomTotal.toLocaleString()}</span>
                 )}
+                <button
+                  onClick={() => startRenameRoom(room)}
+                  className="p-1 text-gray-400 hover:text-blue-500"
+                >
+                  <Edit2 size={13} />
+                </button>
                 <button
                   onClick={() => setAddingToRoomId(room.id)}
                   className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50"
@@ -640,6 +698,15 @@ export default function CustomHomeTab() {
     if (viewingPlan?.id === id) setViewingPlan(null);
   }
 
+  async function handleRenamePlan(id: string, title: string) {
+    const plan = floorPlans.find(p => p.id === id);
+    if (!plan) return;
+    const updated = { ...plan, title };
+    const next = floorPlans.map(p => p.id === id ? updated : p);
+    setFloorPlans(next);
+    await saveFloorPlan(updated);
+  }
+
   async function movePlan(id: string, dir: -1 | 1) {
     const idx = floorPlans.findIndex(p => p.id === id);
     const nIdx = idx + dir;
@@ -827,6 +894,7 @@ export default function CustomHomeTab() {
                 onDelete={() => handleDeletePlan(plan.id)}
                 onMoveUp={() => movePlan(plan.id, -1)}
                 onMoveDown={() => movePlan(plan.id, 1)}
+                onRename={title => handleRenamePlan(plan.id, title)}
               />
             ))}
           </div>
