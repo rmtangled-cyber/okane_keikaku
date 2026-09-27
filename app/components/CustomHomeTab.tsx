@@ -344,53 +344,30 @@ function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, o
   const [renamingRoomId, setRenamingRoomId] = useState<string | null>(null);
   const [roomNameDraft, setRoomNameDraft] = useState("");
   const [selectedFloor, setSelectedFloor] = useState(1);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  // 階数が変わったとき選択階をリセット
   const floorOptions = Array.from({ length: numFloors }, (_, i) => i + 1);
 
   function addRoom() {
     const name = newRoomName.trim();
     if (!name) return;
-    const floorRooms = rooms.filter(r => (r.floor ?? 1) === selectedFloor);
     onChangeRooms([...rooms, { id: uid(), name, floor: selectedFloor, order: rooms.length }]);
     setNewRoomName("");
   }
 
-  function handleDragStart(id: string) {
-    setDraggingId(id);
-  }
-
-  function handleDragOver(e: React.DragEvent, id: string) {
-    e.preventDefault();
-    if (id !== dragOverId) setDragOverId(id);
-  }
-
-  function handleDrop(targetId: string) {
-    if (!draggingId || draggingId === targetId) {
-      setDraggingId(null);
-      setDragOverId(null);
-      return;
-    }
+  function moveRoom(id: string, dir: -1 | 1) {
     const floorRooms = rooms
       .filter(r => (r.floor ?? 1) === selectedFloor)
       .sort((a, b) => a.order - b.order);
-    const dragIdx = floorRooms.findIndex(r => r.id === draggingId);
-    const targetIdx = floorRooms.findIndex(r => r.id === targetId);
-    if (dragIdx < 0 || targetIdx < 0) { setDraggingId(null); setDragOverId(null); return; }
+    const idx = floorRooms.findIndex(r => r.id === id);
+    const nIdx = idx + dir;
+    if (nIdx < 0 || nIdx >= floorRooms.length) return;
     const reordered = [...floorRooms];
-    reordered.splice(dragIdx, 1);
-    reordered.splice(targetIdx, 0, floorRooms[dragIdx]);
+    [reordered[idx], reordered[nIdx]] = [reordered[nIdx], reordered[idx]];
     const otherRooms = rooms.filter(r => (r.floor ?? 1) !== selectedFloor);
     const baseOrder = otherRooms.reduce((max, r) => Math.max(max, r.order), -1) + 1;
-    const nextRooms = [
+    onChangeRooms([
       ...otherRooms,
       ...reordered.map((r, i) => ({ ...r, order: baseOrder + i })),
-    ];
-    onChangeRooms(nextRooms);
-    setDraggingId(null);
-    setDragOverId(null);
+    ]);
   }
 
   function deleteRoom(id: string) {
@@ -477,18 +454,24 @@ function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, o
           const roomAnnotations = floorPlans.flatMap(fp => fp.annotations.filter(a => a.roomId === room.id));
           const roomTotal = roomSpecs.reduce((sum, s) => sum + (s.additionalCost || 0), 0);
 
+          const floorRoomsSorted = rooms
+            .filter(r => (r.floor ?? 1) === selectedFloor)
+            .sort((a, b) => a.order - b.order);
+          const roomIdx = floorRoomsSorted.findIndex(r => r.id === room.id);
+
           return (
-            <div
-              key={room.id}
-              draggable
-              onDragStart={() => handleDragStart(room.id)}
-              onDragOver={e => handleDragOver(e, room.id)}
-              onDrop={() => handleDrop(room.id)}
-              onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-              className={`border rounded-2xl overflow-hidden transition-opacity ${draggingId === room.id ? "opacity-40" : "opacity-100"} ${dragOverId === room.id && draggingId !== room.id ? "border-blue-400 shadow-md" : "border-gray-200"}`}
-            >
+            <div key={room.id} className="border border-gray-200 rounded-2xl overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50">
-                <span className="cursor-grab text-gray-300 shrink-0" title="ドラッグで並び替え">⠿</span>
+                <div className="flex flex-col shrink-0">
+                  <button onClick={() => moveRoom(room.id, -1)} disabled={roomIdx === 0}
+                    className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <ChevronUp size={13} />
+                  </button>
+                  <button onClick={() => moveRoom(room.id, 1)} disabled={roomIdx === floorRoomsSorted.length - 1}
+                    className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
                 <Home size={13} className="text-gray-500 shrink-0" />
                 {renamingRoomId === room.id ? (
                   <input
