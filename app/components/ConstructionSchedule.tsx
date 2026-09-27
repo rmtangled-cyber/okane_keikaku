@@ -306,34 +306,70 @@ function ConstructionGantt({
                     const width = Math.max(DAY_PX * 2, rawWidth);
                     const top = i * ROW_H + 4;
                     const color = CATEGORY_COLORS[cat];
+                    const labelInside = width >= 56;
                     return (
-                      <button
+                      <div
                         key={task.id}
-                        type="button"
                         style={{
                           position: "absolute",
                           left,
                           top,
-                          width,
                           height: ROW_H - 8,
-                          backgroundColor: color,
-                          borderRadius: 4,
-                          opacity: 0.85,
-                          overflow: "hidden",
-                          display: "flex",
-                          alignItems: "center",
-                          paddingLeft: 6,
-                          paddingRight: 6,
+                          overflow: "visible",
+                          zIndex: 2,
                           cursor: "pointer",
-                          border: "none",
                         }}
                         onClick={() => setPopup(prev => prev?.id === task.id ? null : task)}
                       >
-                        <span className="text-white font-medium whitespace-nowrap overflow-hidden text-ellipsis"
-                          style={{ fontSize: 11 }}>
-                          {task.name}
-                        </span>
-                      </button>
+                        {/* colored bar */}
+                        <div style={{
+                          width,
+                          height: "100%",
+                          backgroundColor: color,
+                          borderRadius: 4,
+                          opacity: 0.85,
+                        }} />
+                        {/* label inside bar */}
+                        {labelInside && (
+                          <span style={{
+                            position: "absolute",
+                            left: 0, top: 0,
+                            width,
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            paddingLeft: 6,
+                            paddingRight: 4,
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: "white",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            pointerEvents: "none",
+                          }}>
+                            {task.name}
+                          </span>
+                        )}
+                        {/* label outside bar (when bar is too narrow) */}
+                        {!labelInside && (
+                          <span style={{
+                            position: "absolute",
+                            left: width + 4,
+                            top: 0,
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color,
+                            whiteSpace: "nowrap",
+                            pointerEvents: "none",
+                          }}>
+                            {task.name}
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
