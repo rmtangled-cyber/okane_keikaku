@@ -78,6 +78,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
+  "貯金": "#60a5fa",
   "株式": "#22c55e",
   "投資信託": "#a855f7",
   "債券": "#eab308",
@@ -706,6 +707,7 @@ export default function Dashboard() {
   const pieData = [
     { name: "株式", value: stocksTotal },
     { name: "投資信託", value: fundsTotal },
+    { name: "貯金", value: savingsTotal },
     ...Object.entries(
       assets.reduce<Partial<Record<AssetCategory, number>>>((acc, a) => {
         acc[a.category] = (acc[a.category] ?? 0) + a.amount; return acc;
@@ -1157,12 +1159,12 @@ export default function Dashboard() {
         {/* Total Banner */}
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
           <p className="text-sm text-blue-200 mb-1">総資産</p>
-          <p className="text-4xl font-bold tracking-tight">¥{grandTotal.toLocaleString()}</p>
+          <p className="text-4xl font-bold tracking-tight">¥{Math.round(grandTotal).toLocaleString()}</p>
           <div className="flex gap-4 mt-3 text-xs text-blue-300 flex-wrap">
-            <span>株式 ¥{stocksTotal.toLocaleString()}</span>
-            <span>貯金 ¥{savingsTotal.toLocaleString()}</span>
-            <span>投資信託 ¥{fundsTotal.toLocaleString()}</span>
-            <span>その他 ¥{assetsTotal.toLocaleString()}</span>
+            <span>株式 ¥{Math.round(stocksTotal).toLocaleString()}</span>
+            <span>貯金 ¥{Math.round(savingsTotal).toLocaleString()}</span>
+            <span>投資信託 ¥{Math.round(fundsTotal).toLocaleString()}</span>
+            <span>その他 ¥{Math.round(assetsTotal).toLocaleString()}</span>
           </div>
           <p className="text-xs text-blue-400 mt-1">{new Date().toLocaleDateString("ja-JP")} 現在</p>
         </div>
@@ -1173,27 +1175,37 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-xs text-gray-500">株式</span></div>
-                <div className="font-bold text-gray-900">¥{stocksTotal.toLocaleString()}</div>
-                <div className={`text-xs mt-0.5 ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}>{stocksGain >= 0 ? "+" : ""}{stocksGain.toLocaleString()}円</div>
+                <div className="font-bold text-gray-900">¥{Math.round(stocksTotal).toLocaleString()}</div>
+                <div className={`text-xs mt-0.5 ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}>{stocksGain >= 0 ? "+" : ""}{Math.round(stocksGain).toLocaleString()}円</div>
               </div>
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-purple-500" /><span className="text-xs text-gray-500">投資信託</span></div>
-                <div className="font-bold text-gray-900">¥{fundsTotal.toLocaleString()}</div>
-                <div className={`text-xs mt-0.5 ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}>{fundsGain >= 0 ? "+" : ""}{fundsGain.toLocaleString()}円</div>
+                <div className="font-bold text-gray-900">¥{Math.round(fundsTotal).toLocaleString()}</div>
+                <div className={`text-xs mt-0.5 ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}>{fundsGain >= 0 ? "+" : ""}{Math.round(fundsGain).toLocaleString()}円</div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Wallet size={16} className="text-blue-500" /> 資産構成</h3>
                 {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
-                        {pieData.map(({ name }) => <Cell key={name} fill={CATEGORY_COLOR[name] ?? "#6b7280"} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => typeof v === "number" ? `¥${v.toLocaleString()}` : v} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChart>
+                        <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={75}>
+                          {pieData.map(({ name }) => <Cell key={name} fill={CATEGORY_COLOR[name] ?? "#6b7280"} />)}
+                        </Pie>
+                        <Tooltip formatter={(v) => typeof v === "number" ? `¥${Math.round(v as number).toLocaleString()}` : v} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+                      {pieData.map(({ name }) => (
+                        <span key={name} className="flex items-center gap-1 text-xs text-gray-500">
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: CATEGORY_COLOR[name] ?? "#6b7280" }} />
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </>
                 ) : <div className="h-[200px] flex items-center justify-center text-gray-300 text-sm">データなし</div>}
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
