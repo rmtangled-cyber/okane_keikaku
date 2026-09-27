@@ -278,13 +278,15 @@ function AnnotationModal({ annotation, rooms, onSave, onDelete, onClose }: {
 
 // ── FloorPlanCard ─────────────────────────────────────────────────────────────
 
-function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown, onRename }: {
+function FloorPlanCard({ plan, numFloors, onOpen, onDelete, onMoveUp, onMoveDown, onRename, onChangeFloor }: {
   plan: FloorPlan;
+  numFloors: number;
   onOpen: () => void;
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRename: (title: string) => void;
+  onChangeFloor: (floor: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(plan.title);
@@ -319,6 +321,16 @@ function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown, onRename 
             {plan.title}
           </button>
         )}
+        <select
+          value={plan.floor ?? 1}
+          onChange={e => onChangeFloor(Number(e.target.value))}
+          className="text-xs border border-gray-200 rounded-md px-1 py-0.5 bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        >
+          {Array.from({ length: numFloors }, (_, i) => i + 1).map(f => (
+            <option key={f} value={f}>{f}F</option>
+          ))}
+          <option value={0}>その他</option>
+        </select>
         <span className="text-xs text-gray-400 shrink-0">{plan.annotations.length}件</span>
         <button onClick={onMoveUp} className="p-1 text-gray-400 hover:text-gray-700"><ChevronUp size={14} /></button>
         <button onClick={onMoveDown} className="p-1 text-gray-400 hover:text-gray-700"><ChevronDown size={14} /></button>
@@ -748,6 +760,15 @@ export default function CustomHomeTab() {
     if (viewingPlan?.id === id) setViewingPlan(null);
   }
 
+  async function handleChangeFloorPlan(id: string, floor: number) {
+    const plan = floorPlans.find(p => p.id === id);
+    if (!plan) return;
+    const updated = { ...plan, floor };
+    const next = floorPlans.map(p => p.id === id ? updated : p);
+    setFloorPlans(next);
+    await saveFloorPlan(updated);
+  }
+
   async function handleRenamePlan(id: string, title: string) {
     const plan = floorPlans.find(p => p.id === id);
     if (!plan) return;
@@ -964,11 +985,13 @@ export default function CustomHomeTab() {
                   <FloorPlanCard
                     key={plan.id}
                     plan={plan}
+                    numFloors={data.basicInfo.numFloors ?? 2}
                     onOpen={() => setViewingPlan(plan)}
                     onDelete={() => handleDeletePlan(plan.id)}
                     onMoveUp={() => movePlan(plan.id, -1)}
                     onMoveDown={() => movePlan(plan.id, 1)}
                     onRename={title => handleRenamePlan(plan.id, title)}
+                    onChangeFloor={floor => handleChangeFloorPlan(plan.id, floor)}
                   />
                 ))}
               </div>
