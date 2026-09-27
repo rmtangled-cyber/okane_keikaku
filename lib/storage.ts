@@ -4,7 +4,7 @@ import {
   collection, doc, getDocs, writeBatch, setDoc, getDoc, deleteDoc, query, orderBy,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount, InvestmentProperty, CustomHomeData, FloorPlan } from "./types";
+import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense, IncomeProfile, LifeEvent, InsurancePlan, SpendingRecord, LoanPlan, MortgageSimPlan, MortgageProperty, UserProfile, PropertyTaxEntry, SavingsAccount, InvestmentProperty, CustomHomeData, FloorPlan, ConstructionTask } from "./types";
 
 // ── Viewer mode state ─────────────────────────────────────────────────────────
 
@@ -343,6 +343,30 @@ export async function deleteFloorPlan(id: string): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid) return;
   await deleteDoc(doc(db, "users", uid, "floorPlans", id));
+}
+
+// ── 工事工程 ──────────────────────────────────────────────────────────────────
+
+export async function loadConstructionTasks(): Promise<ConstructionTask[]> {
+  const uid = currentDataUid();
+  try {
+    const snap = await getDocs(query(collection(db, "users", uid, "constructionTasks"), orderBy("startDate")));
+    return snap.docs.map(d => d.data() as ConstructionTask);
+  } catch { return []; }
+}
+
+export async function saveConstructionTask(task: ConstructionTask): Promise<void> {
+  if (isViewerMode()) return;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  await setDoc(doc(db, "users", uid, "constructionTasks", task.id), stripUndefined(task));
+}
+
+export async function deleteConstructionTask(id: string): Promise<void> {
+  if (isViewerMode()) return;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  await deleteDoc(doc(db, "users", uid, "constructionTasks", id));
 }
 
 export async function loadOwnerDisplayName(ownerUid: string): Promise<string | null> {

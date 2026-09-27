@@ -14,6 +14,7 @@ import {
   CustomHomeData, CustomHomeRoom, FloorPlan, FloorPlanAnnotation,
   RoomSpec, ANNOTATION_TYPES, ROOM_SPEC_CATEGORIES,
 } from "@/lib/types";
+import ConstructionSchedule from "./ConstructionSchedule";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -975,6 +976,9 @@ export default function CustomHomeTab() {
           })()
         )}
       </div>
+
+      {/* ── 工程スケジュール ── */}
+      <ConstructionSchedule />
 
       {/* ── 部屋別仕様一覧 ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">

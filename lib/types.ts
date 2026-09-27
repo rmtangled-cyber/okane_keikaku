@@ -576,6 +576,24 @@ export interface CustomHomeData {
   roomSpecs: RoomSpec[];
 }
 
+// 工事工程
+export const CONSTRUCTION_CATEGORIES = [
+  "建物", "不動産", "調査", "申請", "検査",
+  "銀行・入金", "仮設工事", "基礎・大工", "外部工事",
+  "内部下地", "内部仕上", "設備工事", "その他",
+] as const;
+export type ConstructionCategory = typeof CONSTRUCTION_CATEGORIES[number];
+
+export interface ConstructionTask {
+  id: string;
+  category: ConstructionCategory;
+  name: string;
+  startDate: string;  // "YYYY-MM-DD"
+  endDate: string;    // "YYYY-MM-DD"
+  note?: string;
+  updatedAt: string;
+}
+
 // ライフイベント
 export type LifeEventType =
   | "収入変化" | "支出増加" | "支出減少" | "一時支出" | "一時収入" | "その他";
