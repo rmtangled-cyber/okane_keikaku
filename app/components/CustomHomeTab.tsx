@@ -54,7 +54,7 @@ function annotationMeta(type: string) {
 
 const EMPTY_BASIC = {
   builder: "", builderContact: "", manager: "",
-  structure: "", totalAreaSqm: 0, startDate: "", completionDate: "", note: "",
+  structure: "", totalAreaSqm: 0, numFloors: 2, startDate: "", completionDate: "", note: "",
 };
 
 const STRUCTURES = ["木造（在来軸組）", "木造（2×4）", "RC造", "鉄骨造", "木造ハイブリッド", "その他"];
@@ -330,10 +330,11 @@ function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown, onRename 
 
 // ── RoomSpecSection ───────────────────────────────────────────────────────────
 
-function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpecs }: {
+function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, onChangeSpecs }: {
   rooms: CustomHomeRoom[];
   specs: RoomSpec[];
   floorPlans: FloorPlan[];
+  numFloors: number;
   onChangeRooms: (r: CustomHomeRoom[]) => void;
   onChangeSpecs: (s: RoomSpec[]) => void;
 }) {
@@ -342,12 +343,54 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
   const [addingToRoomId, setAddingToRoomId] = useState<string | null>(null);
   const [renamingRoomId, setRenamingRoomId] = useState<string | null>(null);
   const [roomNameDraft, setRoomNameDraft] = useState("");
+  const [selectedFloor, setSelectedFloor] = useState(1);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // 階数が変わったとき選択階をリセット
+  const floorOptions = Array.from({ length: numFloors }, (_, i) => i + 1);
 
   function addRoom() {
     const name = newRoomName.trim();
     if (!name) return;
-    onChangeRooms([...rooms, { id: uid(), name, order: rooms.length }]);
+    const floorRooms = rooms.filter(r => (r.floor ?? 1) === selectedFloor);
+    onChangeRooms([...rooms, { id: uid(), name, floor: selectedFloor, order: rooms.length }]);
     setNewRoomName("");
+  }
+
+  function handleDragStart(id: string) {
+    setDraggingId(id);
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault();
+    if (id !== dragOverId) setDragOverId(id);
+  }
+
+  function handleDrop(targetId: string) {
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+    const floorRooms = rooms
+      .filter(r => (r.floor ?? 1) === selectedFloor)
+      .sort((a, b) => a.order - b.order);
+    const dragIdx = floorRooms.findIndex(r => r.id === draggingId);
+    const targetIdx = floorRooms.findIndex(r => r.id === targetId);
+    if (dragIdx < 0 || targetIdx < 0) { setDraggingId(null); setDragOverId(null); return; }
+    const reordered = [...floorRooms];
+    reordered.splice(dragIdx, 1);
+    reordered.splice(targetIdx, 0, floorRooms[dragIdx]);
+    const otherRooms = rooms.filter(r => (r.floor ?? 1) !== selectedFloor);
+    const baseOrder = otherRooms.reduce((max, r) => Math.max(max, r.order), -1) + 1;
+    const nextRooms = [
+      ...otherRooms,
+      ...reordered.map((r, i) => ({ ...r, order: baseOrder + i })),
+    ];
+    onChangeRooms(nextRooms);
+    setDraggingId(null);
+    setDragOverId(null);
   }
 
   function deleteRoom(id: string) {
@@ -383,6 +426,10 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
 
   const grandTotal = specs.reduce((sum, s) => sum + (s.additionalCost || 0), 0);
 
+  const visibleRooms = rooms
+    .filter(r => (r.floor ?? 1) === selectedFloor)
+    .sort((a, b) => a.order - b.order);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -394,13 +441,22 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
         )}
       </div>
 
-      {/* 部屋追加 */}
+      {/* フロア選択 + 部屋追加 */}
       <div className="flex gap-2 mb-4">
+        <select
+          value={selectedFloor}
+          onChange={e => setSelectedFloor(Number(e.target.value))}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+        >
+          {floorOptions.map(f => (
+            <option key={f} value={f}>{f}F</option>
+          ))}
+        </select>
         <input
           value={newRoomName}
           onChange={e => setNewRoomName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addRoom()}
-          placeholder="部屋名を入力（例: LDK）"
+          placeholder={`部屋名を入力（例: LDK）`}
           className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -411,19 +467,28 @@ function RoomSpecSection({ rooms, specs, floorPlans, onChangeRooms, onChangeSpec
         </button>
       </div>
 
-      {rooms.length === 0 && (
-        <p className="text-sm text-gray-400 py-4 text-center">部屋を追加すると仕様を登録できます</p>
+      {visibleRooms.length === 0 && (
+        <p className="text-sm text-gray-400 py-4 text-center">{selectedFloor}Fに部屋を追加してください</p>
       )}
 
       <div className="space-y-4">
-        {rooms.map(room => {
+        {visibleRooms.map(room => {
           const roomSpecs = specs.filter(s => s.roomId === room.id);
           const roomAnnotations = floorPlans.flatMap(fp => fp.annotations.filter(a => a.roomId === room.id));
           const roomTotal = roomSpecs.reduce((sum, s) => sum + (s.additionalCost || 0), 0);
 
           return (
-            <div key={room.id} className="border border-gray-200 rounded-2xl overflow-hidden">
+            <div
+              key={room.id}
+              draggable
+              onDragStart={() => handleDragStart(room.id)}
+              onDragOver={e => handleDragOver(e, room.id)}
+              onDrop={() => handleDrop(room.id)}
+              onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+              className={`border rounded-2xl overflow-hidden transition-opacity ${draggingId === room.id ? "opacity-40" : "opacity-100"} ${dragOverId === room.id && draggingId !== room.id ? "border-blue-400 shadow-md" : "border-gray-200"}`}
+            >
               <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50">
+                <span className="cursor-grab text-gray-300 shrink-0" title="ドラッグで並び替え">⠿</span>
                 <Home size={13} className="text-gray-500 shrink-0" />
                 {renamingRoomId === room.id ? (
                   <input
@@ -771,6 +836,7 @@ export default function CustomHomeTab() {
               ["連絡先", data.basicInfo.builderContact],
               ["構造", data.basicInfo.structure],
               ["延床面積", data.basicInfo.totalAreaSqm ? `${data.basicInfo.totalAreaSqm} m²（${tsubo} 坪）` : "—"],
+              ["階数", data.basicInfo.numFloors ? `${data.basicInfo.numFloors}階建て` : "—"],
               ["着工予定日", data.basicInfo.startDate || "—"],
               ["竣工予定日", data.basicInfo.completionDate || "—"],
             ].map(([label, value]) => (
@@ -817,7 +883,13 @@ export default function CustomHomeTab() {
                 <input type="number" value={basicDraft.totalAreaSqm || ""} onChange={e => setBasicDraft(d => ({ ...d, totalAreaSqm: Number(e.target.value) }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <div />
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">階数</label>
+                <select value={basicDraft.numFloors ?? 2} onChange={e => setBasicDraft(d => ({ ...d, numFloors: Number(e.target.value) }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}階建て</option>)}
+                </select>
+              </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">着工予定日</label>
                 <input type="date" value={basicDraft.startDate} onChange={e => setBasicDraft(d => ({ ...d, startDate: e.target.value }))}
@@ -907,6 +979,7 @@ export default function CustomHomeTab() {
           rooms={data.rooms}
           specs={data.roomSpecs}
           floorPlans={floorPlans}
+          numFloors={data.basicInfo.numFloors ?? 2}
           onChangeRooms={rooms => updateData({ ...data, rooms })}
           onChangeSpecs={roomSpecs => updateData({ ...data, roomSpecs })}
         />

@@ -520,6 +520,7 @@ export interface CustomHomeBasicInfo {
   manager: string;
   structure: string;
   totalAreaSqm: number;
+  numFloors: number;
   startDate: string;
   completionDate: string;
   note: string;
@@ -528,6 +529,7 @@ export interface CustomHomeBasicInfo {
 export interface CustomHomeRoom {
   id: string;
   name: string;
+  floor: number;
   order: number;
 }
 
