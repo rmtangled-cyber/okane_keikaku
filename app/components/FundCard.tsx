@@ -1,6 +1,6 @@
 "use client";
 
-import { FundHolding, calcTax, calcFutureValue } from "@/lib/types";
+import { FundHolding, calcTax } from "@/lib/types";
 import { Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 const ACCOUNT_COLORS: Record<string, string> = {
@@ -11,7 +11,6 @@ const ACCOUNT_COLORS: Record<string, string> = {
   "iDeCo": "bg-purple-100 text-purple-800",
 };
 
-const PROJECTION_YEARS = [5, 10, 20, 30];
 
 interface Props {
   fund: FundHolding;
@@ -27,11 +26,6 @@ export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props)
   const netProceeds = fund.currentValue - tax;
   const isUp = gain > 0;
   const isDown = gain < 0;
-
-  const projections = PROJECTION_YEARS.map(y => ({
-    years: y,
-    value: calcFutureValue(fund.currentValue, fund.expectedAnnualReturn, fund.monthlyContribution, y),
-  }));
 
   return (
     <div className={`bg-white rounded-xl border shadow-sm p-4 ${isUp ? "border-green-100" : isDown ? "border-red-100" : "border-gray-100"}`}>
@@ -92,27 +86,6 @@ export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props)
         </div>
       </div>
 
-      {/* Projection */}
-      <div className="bg-indigo-50 rounded-xl p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-indigo-700">将来予測（年利 {fund.expectedAnnualReturn}%）</span>
-          {fund.monthlyContribution > 0 && (
-            <span className="text-xs text-indigo-500">月積立 ¥{fund.monthlyContribution.toLocaleString()}</span>
-          )}
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
-          {projections.map(({ years, value }) => (
-            <div key={years} className="bg-white rounded-lg p-2 text-center">
-              <div className="text-xs text-gray-400">{years}年後</div>
-              <div className="text-xs font-bold text-indigo-700">
-                {value >= 100000000
-                  ? `${(value / 100000000).toFixed(1)}億`
-                  : `${Math.round(value / 10000)}万`}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

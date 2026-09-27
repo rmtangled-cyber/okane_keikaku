@@ -141,20 +141,13 @@ function getIncomeForYear(profiles: IncomeProfile[], year: number, baseYear: num
   return self ?? active[0] ?? null;
 }
 
-function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], assets: Asset[]): number {
-  const fundsVal = funds.reduce((s, f) => s + f.currentValue, 0);
-  const stocksVal = stocks.reduce((s, h) => s + h.currentPrice * h.shares, 0);
-  const total = fundsVal + stocksVal + assets.reduce((s, a) => s + a.amount, 0);
-  if (total === 0) return 0;
-  const fundsReturn = funds.reduce((s, f) => s + f.currentValue * (f.expectedAnnualReturn / 100), 0);
-  return (fundsReturn + stocksVal * 0.05) / total;
-}
 
 interface BreakdownItem { label: string; monthly: number }
 interface OneTimeItem { label: string; amount: number }
 interface SimPoint {
   year: number; assets: number; assetChange: number; label?: string;
   annualIncome: number; annualExpense: number; oneTime: number;
+  investmentReturn: number;
   incomeItems: BreakdownItem[];
   expenseItems: BreakdownItem[];
   oneTimeItems: OneTimeItem[];
@@ -440,6 +433,7 @@ function simulate(
       annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly) + investmentRentMonthly) * 12),
       annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + fundMonthly + investmentCostMonthly + Math.max(0, -cumulativeMonthly)) * 12),
       oneTime,
+      investmentReturn: Math.round(investmentReturn),
       incomeItems,
       expenseItems,
       oneTimeItems,
@@ -536,8 +530,8 @@ export default function Dashboard() {
   const [editingLifeEvent, setEditingLifeEvent] = useState<LifeEvent | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showExpenseTemplateModal, setShowExpenseTemplateModal] = useState(false);
-  const [inflationRate, setInflationRate] = useState<number>(0.005);
-  const [manualReturnRate, setManualReturnRate] = useState<number | null>(null);
+  const [inflationRate, setInflationRate] = useState<number>(0.02);
+  const [manualReturnRate, setManualReturnRate] = useState<number>(0.05);
   // 生活費カテゴリ入力用の一時state（name → 入力文字列）
   const [expenseInputs, setExpenseInputs] = useState<Record<string, string>>({});
   const [draftEvents, setDraftEvents] = useState<LifeEvent[]>([]);
@@ -721,14 +715,12 @@ export default function Dashboard() {
   const memberOptions = useMemo(() => getMemberOptions(userProfile), [userProfile]);
 
   // ── Life Plan Simulation ──────────────────────────────
-  const weightedReturn = computeWeightedReturn(funds, stocks, assets);
   const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
   const simYears = Math.max(10, 100 - selfAge);
   const propertyTaxAnnual = propertyTaxEntries.reduce((s, e) => s + calcPropertyTax(e).total, 0);
-  const effectiveReturnRate = manualReturnRate ?? weightedReturn;
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
-    lifeEvents, effectiveReturnRate, currentYear, simYears, mortgageSimPlan,
+    lifeEvents, manualReturnRate, currentYear, simYears, mortgageSimPlan,
     propertyTaxEntries, inflationRate, funds,
     mortgageProperties,
     parseFloat(mortgageSimPlan?.sharedBaseRate ?? "2.475") || 2.475,
@@ -1255,30 +1247,16 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 shrink-0 w-28">
-                    投資リターン率
-                    {weightedReturn > 0 && manualReturnRate === null && (
-                      <span className="text-gray-400 ml-1">（自動）</span>
-                    )}
-                  </span>
+                  <span className="text-xs text-gray-500 shrink-0 w-28">投資リターン率</span>
                   <input
                     type="range" min={0} max={10} step={0.5}
-                    value={(manualReturnRate ?? weightedReturn) * 100}
+                    value={manualReturnRate * 100}
                     onChange={e => setManualReturnRate(parseFloat(e.target.value) / 100)}
                     className="flex-1 accent-emerald-500"
                   />
                   <span className="text-xs font-medium text-gray-700 w-10 text-right shrink-0">
-                    {((manualReturnRate ?? weightedReturn) * 100).toFixed(1)}%
+                    {(manualReturnRate * 100).toFixed(1)}%
                   </span>
-                  {manualReturnRate !== null && (
-                    <button
-                      onClick={() => setManualReturnRate(null)}
-                      className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
-                      title="自動計算に戻す"
-                    >
-                      リセット
-                    </button>
-                  )}
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
@@ -1323,12 +1301,8 @@ export default function Dashboard() {
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} label={{ value: "総資産", angle: -90, position: "insideLeft", offset: 10, fontSize: 9, fill: "#8b5cf6" }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v =>
-                    v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
-                  } width={52} label={{ value: "年間純増分", angle: 90, position: "insideRight", offset: 10, fontSize: 9, fill: "#6b7280" }} />
+                  } width={52} />
                   <Tooltip content={<LifePlanTooltip />} />
-                  <Legend verticalAlign="top" height={24} formatter={(value) => <span style={{ fontSize: 11, color: "#6b7280" }}>{value}</span>} />
                   {lifeEvents.map(e => (
                     <ReferenceLine yAxisId="left" key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
                       label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
@@ -1347,14 +1321,17 @@ export default function Dashboard() {
                       label={{ value: `${mortgageSimPlan.bankName || "住宅ローン"}完済`, position: "insideTopRight", fontSize: 8, fill: "#1d4ed8" }}
                     />
                   )}
-                  <Bar yAxisId="right" dataKey="assetChange" name="純増分" barSize={6}>
-                    {simData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.assetChange >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.7} />
-                    ))}
-                  </Bar>
                   <Area yAxisId="left" type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
                 </ComposedChart>
               </ResponsiveContainer>
+
+              {/* 凡例 */}
+              <div className="flex items-center justify-center gap-6 mt-2 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-8 h-0.5 bg-violet-500 rounded" />
+                  <span className="text-xs text-gray-500">総資産（万円）</span>
+                </div>
+              </div>
 
               <div className="grid grid-cols-4 gap-2 mt-4">
                 {[70, 80, 90, 100].map(age => {
@@ -1427,6 +1404,16 @@ export default function Dashboard() {
                           </tbody>
                         </table>
                       </div>
+                      {/* 含み益 */}
+                      {d.investmentReturn !== 0 && (
+                        <div className="px-4 py-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-semibold text-indigo-600">含み益（投資リターン）</span>
+                            <span className="text-sm font-bold text-indigo-700">+{fmtY(d.investmentReturn)}円</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">資産 × リターン率 {(manualReturnRate * 100).toFixed(1)}%</p>
+                        </div>
+                      )}
                       {/* 一時金 */}
                       {d.oneTime !== 0 && (
                         <div className="px-4 py-3">

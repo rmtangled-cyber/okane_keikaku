@@ -86,7 +86,7 @@ export interface FundHolding {
   memberId?: string; // 名義人（"self", "spouse", または子供のid）
   purchaseAmount: number;        // 取得金額合計（円）
   currentValue: number;          // 現在評価額（円）
-  expectedAnnualReturn: number;  // 期待年利（%）
+  expectedAnnualReturn?: number;  // 期待年利（%）※廃止予定、シミュレーションでは投資リターン率スライダーを使用
   monthlyContribution: number;   // 月次積立額（円、0なら積立なし）
   monthlySavingDay?: number;     // 毎月の積立日（1〜28、デフォルト1日）
   lastAutoContribYearMonth?: string; // 最後に自動積立を適用した年月 "YYYY-MM"
