@@ -78,6 +78,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
   "現金・預金": "#3b82f6",
+  "貯金": "#60a5fa",
   "株式": "#22c55e",
   "投資信託": "#a855f7",
   "債券": "#eab308",
@@ -706,6 +707,7 @@ export default function Dashboard() {
   const pieData = [
     { name: "株式", value: stocksTotal },
     { name: "投資信託", value: fundsTotal },
+    { name: "貯金", value: savingsTotal },
     ...Object.entries(
       assets.reduce<Partial<Record<AssetCategory, number>>>((acc, a) => {
         acc[a.category] = (acc[a.category] ?? 0) + a.amount; return acc;
@@ -1186,14 +1188,24 @@ export default function Dashboard() {
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Wallet size={16} className="text-blue-500" /> 資産構成</h3>
                 {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
-                        {pieData.map(({ name }) => <Cell key={name} fill={CATEGORY_COLOR[name] ?? "#6b7280"} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => typeof v === "number" ? `¥${v.toLocaleString()}` : v} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChart>
+                        <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={75}>
+                          {pieData.map(({ name }) => <Cell key={name} fill={CATEGORY_COLOR[name] ?? "#6b7280"} />)}
+                        </Pie>
+                        <Tooltip formatter={(v) => typeof v === "number" ? `¥${Math.round(v as number).toLocaleString()}` : v} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+                      {pieData.map(({ name }) => (
+                        <span key={name} className="flex items-center gap-1 text-xs text-gray-500">
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: CATEGORY_COLOR[name] ?? "#6b7280" }} />
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </>
                 ) : <div className="h-[200px] flex items-center justify-center text-gray-300 text-sm">データなし</div>}
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
