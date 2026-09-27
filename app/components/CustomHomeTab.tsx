@@ -916,6 +916,9 @@ export default function CustomHomeTab() {
         )}
       </div>
 
+      {/* ── 工程スケジュール ── */}
+      <ConstructionSchedule />
+
       {/* ── 間取り図面 ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -999,9 +1002,6 @@ export default function CustomHomeTab() {
           })()
         )}
       </div>
-
-      {/* ── 工程スケジュール ── */}
-      <ConstructionSchedule />
 
       {/* ── 部屋別仕様一覧 ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
