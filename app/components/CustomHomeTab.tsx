@@ -330,13 +330,14 @@ function FloorPlanCard({ plan, onOpen, onDelete, onMoveUp, onMoveDown, onRename 
 
 // ── RoomSpecSection ───────────────────────────────────────────────────────────
 
-function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, onChangeSpecs }: {
+function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, onChangeSpecs, onDeleteRoom }: {
   rooms: CustomHomeRoom[];
   specs: RoomSpec[];
   floorPlans: FloorPlan[];
   numFloors: number;
   onChangeRooms: (r: CustomHomeRoom[]) => void;
   onChangeSpecs: (s: RoomSpec[]) => void;
+  onDeleteRoom: (id: string) => void;
 }) {
   const [newRoomName, setNewRoomName] = useState("");
   const [editingSpec, setEditingSpec] = useState<RoomSpec | null>(null);
@@ -372,8 +373,7 @@ function RoomSpecSection({ rooms, specs, floorPlans, numFloors, onChangeRooms, o
 
   function deleteRoom(id: string) {
     if (!confirm("この部屋と関連する仕様をすべて削除しますか？")) return;
-    onChangeRooms(rooms.filter(r => r.id !== id));
-    onChangeSpecs(specs.filter(s => s.roomId !== id));
+    onDeleteRoom(id);
   }
 
   function startRenameRoom(room: CustomHomeRoom) {
@@ -965,6 +965,7 @@ export default function CustomHomeTab() {
           numFloors={data.basicInfo.numFloors ?? 2}
           onChangeRooms={rooms => updateData({ ...data, rooms })}
           onChangeSpecs={roomSpecs => updateData({ ...data, roomSpecs })}
+          onDeleteRoom={id => updateData({ ...data, rooms: data.rooms.filter(r => r.id !== id), roomSpecs: data.roomSpecs.filter(s => s.roomId !== id) })}
         />
       </div>
     </div>
