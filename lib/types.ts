@@ -86,7 +86,7 @@ export interface FundHolding {
   memberId?: string; // 名義人（"self", "spouse", または子供のid）
   purchaseAmount: number;        // 取得金額合計（円）
   currentValue: number;          // 現在評価額（円）
-  expectedAnnualReturn: number;  // 期待年利（%）
+  expectedAnnualReturn?: number;  // 期待年利（%）※廃止予定、シミュレーションでは投資リターン率スライダーを使用
   monthlyContribution: number;   // 月次積立額（円、0なら積立なし）
   monthlySavingDay?: number;     // 毎月の積立日（1〜28、デフォルト1日）
   lastAutoContribYearMonth?: string; // 最後に自動積立を適用した年月 "YYYY-MM"
@@ -574,6 +574,24 @@ export interface CustomHomeData {
   basicInfo: CustomHomeBasicInfo;
   rooms: CustomHomeRoom[];
   roomSpecs: RoomSpec[];
+}
+
+// 工事工程
+export const CONSTRUCTION_CATEGORIES = [
+  "建物", "不動産", "調査", "申請", "検査",
+  "銀行・入金", "仮設工事", "基礎・大工", "外部工事",
+  "内部下地", "内部仕上", "設備工事", "その他",
+] as const;
+export type ConstructionCategory = typeof CONSTRUCTION_CATEGORIES[number];
+
+export interface ConstructionTask {
+  id: string;
+  category: ConstructionCategory;
+  name: string;
+  startDate: string;
+  endDate: string;
+  note?: string;
+  updatedAt: string;
 }
 
 // ライフイベント

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FundHolding, AccountType, calcFutureValue } from "@/lib/types";
+import { FundHolding, AccountType } from "@/lib/types";
 import { fetchFundQuote } from "@/lib/marketData";
 import { X, RefreshCw, Loader2 } from "lucide-react";
 
@@ -25,7 +25,6 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
   const [memberId, setMemberId] = useState<string | undefined>(undefined);
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [currentValue, setCurrentValue] = useState("");
-  const [expectedReturn, setExpectedReturn] = useState("");
   const [monthlyContrib, setMonthlyContrib] = useState("");
   const [savingDay, setSavingDay] = useState("1");
   const [startDate, setStartDate] = useState("");
@@ -42,7 +41,6 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
       setMemberId(fund.memberId);
       setPurchaseAmount(String(fund.purchaseAmount));
       setCurrentValue(String(fund.currentValue));
-      setExpectedReturn(String(fund.expectedAnnualReturn));
       setMonthlyContrib(String(fund.monthlyContribution));
       setSavingDay(String(fund.monthlySavingDay ?? 1));
       setStartDate(fund.startDate ?? "");
@@ -66,10 +64,7 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
   }
 
   const cv = parseFloat(currentValue) || 0;
-  const er = parseFloat(expectedReturn) || 0;
   const mc = parseFloat(monthlyContrib) || 0;
-  const preview10 = calcFutureValue(cv, er, mc, 10);
-  const preview30 = calcFutureValue(cv, er, mc, 30);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,7 +77,7 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
       memberId: memberId || undefined,
       purchaseAmount: pa,
       currentValue: cv2,
-      expectedAnnualReturn: parseFloat(expectedReturn) || 0,
+      expectedAnnualReturn: 0,
       monthlyContribution: parseFloat(monthlyContrib) || 0,
       monthlySavingDay: parseFloat(monthlyContrib) > 0 ? (parseInt(savingDay) || 1) : undefined,
       startDate: startDate || undefined,
@@ -213,34 +208,16 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                期待年利（%）
-                <span className="ml-1 text-xs font-normal text-gray-400">全世界株は7%が目安</span>
-              </label>
-              <input
-                type="number"
-                value={expectedReturn}
-                onChange={e => setExpectedReturn(e.target.value)}
-                placeholder="7"
-                min={0}
-                max={50}
-                step="0.1"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">月次積立額（円）</label>
-              <input
-                type="number"
-                value={monthlyContrib}
-                onChange={e => setMonthlyContrib(e.target.value)}
-                placeholder="50000"
-                min={0}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">月次積立額（円）</label>
+            <input
+              type="number"
+              value={monthlyContrib}
+              onChange={e => setMonthlyContrib(e.target.value)}
+              placeholder="50000"
+              min={0}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
           </div>
 
           {/* 積立日 — 月次積立額が設定されているときのみ表示 */}
@@ -265,28 +242,8 @@ export default function FundModal({ fund, memberOptions, onSave, onClose }: Prop
             </div>
           )}
 
-          {/* Preview */}
-          {cv > 0 && (
-            <div className="bg-indigo-50 rounded-xl p-3 text-sm">
-              <div className="text-xs font-semibold text-indigo-700 mb-2">将来予測プレビュー（年利 {er}%）</div>
-              <div className="flex gap-4">
-                <div>
-                  <span className="text-xs text-gray-500">10年後: </span>
-                  <span className="font-bold text-indigo-700">
-                    {preview10 >= 100000000 ? `${(preview10 / 100000000).toFixed(1)}億` : `${Math.round(preview10 / 10000)}万`}円
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500">30年後: </span>
-                  <span className="font-bold text-indigo-700">
-                    {preview30 >= 100000000 ? `${(preview30 / 100000000).toFixed(1)}億` : `${Math.round(preview30 / 10000)}万`}円
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          <div>
+<div>
             <label className="block text-sm font-medium text-gray-700 mb-1">開始日（任意）</label>
             <input
               type="date"
