@@ -74,20 +74,38 @@ export async function fetchStockQuote(ticker: string): Promise<QuoteResult | nul
 
 /**
  * 複数通貨の対円レートを一括取得
- * Frankfurter API（OSS・CORS対応・認証不要）を使用
- * https://www.frankfurter.app/
- *
- * Frankfurter は ECB レートをベースにした主要通貨をカバー
- * (USD/EUR/GBP/AUD/CAD/CHF/HKD/SGD/CNY 等)
+ * 1st: jsDelivr CDN ホスト型 currency-api（CORS確実・障害ほぼなし）
+ * 2nd: Frankfurter API（フォールバック）
  */
-async function fetchFxRatesFromFrankfurter(
+async function fetchFxRates(
   currencies: string[],
 ): Promise<Record<string, number>> {
   const nonJPY = [...new Set(currencies.filter(c => c && c !== "JPY"))];
   if (nonJPY.length === 0) return {};
 
+  // 1st: jsDelivr CDN (fawazahmed0/currency-api)
+  // レスポンス形式: { date, jpy: { usd: 0.0067, eur: 0.0062, ... } }
   try {
-    // base=JPY → 各通貨に対する1JPYの価値 → 逆数 = 1通貨あたりの円
+    const res = await fetch(
+      "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/jpy.json",
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (res.ok) {
+      const json = await res.json();
+      const jpyRates = json?.jpy as Record<string, number> | undefined;
+      if (jpyRates) {
+        const rates: Record<string, number> = {};
+        for (const cur of nonJPY) {
+          const rate = jpyRates[cur.toLowerCase()];
+          if (rate && rate > 0) rates[cur] = 1 / rate; // 1JPY=0.0067USD → 1USD=149JPY
+        }
+        if (Object.keys(rates).length > 0) return rates;
+      }
+    }
+  } catch { /* fallback */ }
+
+  // 2nd: Frankfurter API
+  try {
     const res = await fetch(
       `https://api.frankfurter.app/latest?base=JPY&symbols=${nonJPY.join(",")}`,
       { signal: AbortSignal.timeout(8000) },
@@ -96,7 +114,7 @@ async function fetchFxRatesFromFrankfurter(
     const json = await res.json();
     const rates: Record<string, number> = {};
     for (const [cur, rate] of Object.entries(json.rates as Record<string, number>)) {
-      if (rate > 0) rates[cur] = 1 / rate; // 1JPY=0.0067USD → 1USD=149JPY
+      if (rate > 0) rates[cur] = 1 / rate;
     }
     return rates;
   } catch {
@@ -120,7 +138,7 @@ export async function fetchStockQuotesBulk(
     onProgress?.(i + 1, tickers.length);
   }
 
-  const fxRates = await fetchFxRatesFromFrankfurter(currencies);
+  const fxRates = await fetchFxRates(currencies);
   return { prices, fxRates };
 }
 
