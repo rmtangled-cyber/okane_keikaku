@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine,
-  AreaChart, Area, BarChart, Bar,
+  AreaChart, Area, BarChart, Bar, ComposedChart,
 } from "recharts";
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
@@ -153,7 +153,7 @@ function computeWeightedReturn(funds: FundHolding[], stocks: StockHolding[], ass
 interface BreakdownItem { label: string; monthly: number }
 interface OneTimeItem { label: string; amount: number }
 interface SimPoint {
-  year: number; assets: number; label?: string;
+  year: number; assets: number; assetChange: number; label?: string;
   annualIncome: number; annualExpense: number; oneTime: number;
   incomeItems: BreakdownItem[];
   expenseItems: BreakdownItem[];
@@ -402,6 +402,7 @@ function simulate(
     const monthlyCashFlow = totalTakeHomeMonthly - expenseTotal - insuranceTotal - loanTotal - mortgagePayment - propTax + cumulativeMonthly + investmentRentMonthly - investmentCostMonthly;
     const annualCashFlow = monthlyCashFlow * 12;
     const investmentReturn = i > 0 ? assets * weightedReturn : 0;
+    const assetChange = i > 0 ? annualCashFlow + oneTime + investmentReturn : 0;
 
     if (i > 0) assets = assets + annualCashFlow + oneTime + investmentReturn;
 
@@ -434,6 +435,7 @@ function simulate(
     points.push({
       year,
       assets: Math.round(assets),
+      assetChange: Math.round(assetChange),
       label: yearEvents.map(e => e.title).join(" / ") || undefined,
       annualIncome: Math.round((totalTakeHomeMonthly + Math.max(0, cumulativeMonthly) + investmentRentMonthly) * 12),
       annualExpense: Math.round((expenseTotal + insuranceTotal + loanTotal + mortgagePayment + propTax + fundMonthly + investmentCostMonthly + Math.max(0, -cumulativeMonthly)) * 12),
@@ -720,7 +722,7 @@ export default function Dashboard() {
   // ── Life Plan Simulation ──────────────────────────────
   const weightedReturn = computeWeightedReturn(funds, stocks, assets);
   const selfAge = userProfile ? currentYear - userProfile.birthYear : 40;
-  const simYears = Math.max(10, 90 - selfAge);
+  const simYears = Math.max(10, 100 - selfAge);
   const propertyTaxAnnual = propertyTaxEntries.reduce((s, e) => s + calcPropertyTax(e).total, 0);
   const simData = simulate(
     grandTotal, incomeProfiles, expenses, insurancePlans, loanPlans,
@@ -1232,7 +1234,7 @@ export default function Dashboard() {
             {/* ── ライフプラン（サマリに統合） ─────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜90歳）
+                <MapPin size={16} className="text-violet-500" /> 資産シミュレーション（〜100歳）
               </h3>
               <p className="text-xs text-gray-400 mb-3">
                 年齢別収入・ローン・保険・ライフイベントを考慮した試算
@@ -1251,7 +1253,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <ResponsiveContainer width="100%" height={userProfile && userProfile.familyMembers.length > 0 ? 260 + 11 * (userProfile.familyMembers.filter(m => m.type === "spouse").length + userProfile.familyMembers.filter(m => m.type === "child").length) : 260}>
-                <AreaChart data={simData} onClick={(e) => {
+                <ComposedChart data={simData} onClick={(e) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const ev = e as any;
                   const pt: SimPoint | undefined = ev?.activePayload?.[0]?.payload
@@ -1290,33 +1292,42 @@ export default function Dashboard() {
                       );
                     }}
                   />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v =>
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={v =>
+                    v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
+                  } width={52} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v =>
                     v >= 100000000 ? `${(v / 100000000).toFixed(0)}億` : `${(v / 10000).toFixed(0)}万`
                   } width={52} />
                   <Tooltip content={<LifePlanTooltip />} />
                   {lifeEvents.map(e => (
-                    <ReferenceLine key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
+                    <ReferenceLine yAxisId="left" key={e.id} x={e.year} stroke="#f59e0b" strokeDasharray="4 4"
                       label={{ value: e.title, position: "top", fontSize: 9, fill: "#92400e" }} />
                   ))}
                   {loanPlans.map(l => {
                     const endY = parseInt(loanEndYM(l.startDate, l.termMonths).split("-")[0]);
-                    return <ReferenceLine key={l.id} x={endY} stroke="#22c55e" strokeDasharray="3 3"
+                    return <ReferenceLine yAxisId="left" key={l.id} x={endY} stroke="#22c55e" strokeDasharray="3 3"
                       label={{ value: `${l.name}完済`, position: "insideTopRight", fontSize: 8, fill: "#15803d" }} />;
                   })}
                   {mortgageSimPlan && parseFloat(mortgageSimPlan.principalMan) > 0 && (
                     <ReferenceLine
+                      yAxisId="left"
                       x={currentYear + (parseInt(mortgageSimPlan.termYears) || 35)}
                       stroke="#3b82f6"
                       strokeDasharray="3 3"
                       label={{ value: `${mortgageSimPlan.bankName || "住宅ローン"}完済`, position: "insideTopRight", fontSize: 8, fill: "#1d4ed8" }}
                     />
                   )}
-                  <Area type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
-                </AreaChart>
+                  <Bar yAxisId="right" dataKey="assetChange" name="純増分" barSize={6}>
+                    {simData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.assetChange >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.7} />
+                    ))}
+                  </Bar>
+                  <Area yAxisId="left" type="monotone" dataKey="assets" stroke="#8b5cf6" strokeWidth={2} fill="url(#assetGrad)" name="総資産" />
+                </ComposedChart>
               </ResponsiveContainer>
 
               <div className="grid grid-cols-4 gap-2 mt-4">
-                {[65, 70, 80, 90].map(age => {
+                {[70, 80, 90, 100].map(age => {
                   const y = age - selfAge;
                   const pt = y > 0 ? simData[y] : undefined;
                   const v = pt?.assets ?? 0;
