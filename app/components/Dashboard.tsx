@@ -471,7 +471,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "投資物件", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "投資物件", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "注文住宅", "プロフィール"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
