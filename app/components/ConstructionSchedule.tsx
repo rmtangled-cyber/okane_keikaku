@@ -307,6 +307,10 @@ function ConstructionGantt({
                     const top = i * ROW_H + 4;
                     const color = CATEGORY_COLORS[cat];
                     const labelInside = width >= 56;
+                    const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+                    const dateStr = task.startDate === task.endDate
+                      ? fmt(tStart)
+                      : `${fmt(tStart)}–${fmt(tEnd)}`;
                     return (
                       <div
                         key={task.id}
@@ -338,17 +342,17 @@ function ConstructionGantt({
                             height: "100%",
                             display: "flex",
                             alignItems: "center",
+                            gap: 4,
                             paddingLeft: 6,
                             paddingRight: 4,
                             fontSize: 11,
-                            fontWeight: 500,
                             color: "white",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
                             pointerEvents: "none",
                           }}>
-                            {task.name}
+                            <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1 }}>{task.name}</span>
+                            <span style={{ opacity: 0.8, fontSize: 10, flexShrink: 0 }}>{dateStr}</span>
                           </span>
                         )}
                         {/* label outside bar (when bar is too narrow) */}
@@ -360,13 +364,14 @@ function ConstructionGantt({
                             height: "100%",
                             display: "flex",
                             alignItems: "center",
+                            gap: 4,
                             fontSize: 11,
-                            fontWeight: 500,
                             color,
                             whiteSpace: "nowrap",
                             pointerEvents: "none",
                           }}>
-                            {task.name}
+                            <span style={{ fontWeight: 500 }}>{task.name}</span>
+                            <span style={{ opacity: 0.7, fontSize: 10 }}>{dateStr}</span>
                           </span>
                         )}
                       </div>
