@@ -586,7 +586,8 @@ export default function Dashboard() {
   // 非JPY銘柄は fxRates（一括取得時保存）で円換算。レート未取得の場合は0円扱い
   function getRate(h: StockHolding, cur: string): number {
     if (cur === "JPY") return 1;
-    return h.fxRates?.[cur] ?? (cur === "USD" ? (h.usdJpyRate ?? 0) : 0);
+    const fromHolding = h.fxRates?.[cur] ?? (cur === "USD" ? h.usdJpyRate : undefined);
+    return fromHolding ?? userProfile?.manualFxRates?.[cur] ?? 0;
   }
   // currentPrice=0（未入力）や FXレート未取得の場合は { currentJPY:0, costJPY:0 } を返し
   // 損益計算から除外する（大幅マイナスになるのを防ぐ）
