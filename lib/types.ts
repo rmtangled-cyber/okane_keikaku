@@ -171,6 +171,7 @@ export interface UserProfile {
   birthYear: number;
   prefecture: string;
   familyMembers: FamilyMember[];
+  manualFxRates?: Record<string, number>; // 為替レート手動設定（自動取得失敗時のフォールバック）
   updatedAt: string;
 }
 

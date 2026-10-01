@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserProfile, FamilyMember } from "@/lib/types";
+import { UserProfile, FamilyMember, CURRENCIES } from "@/lib/types";
 import { PREFECTURES } from "@/lib/taxCalc";
 import { Plus, Trash2 } from "lucide-react";
 import ViewerInvitePanel from "./ViewerInvitePanel";
@@ -19,6 +19,7 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
   const [birthYear, setBirthYear] = useState(String(currentYear - 30));
   const [prefecture, setPrefecture] = useState("東京");
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [manualFxRates, setManualFxRates] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -27,6 +28,11 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
     setBirthYear(String(profile.birthYear));
     setPrefecture(profile.prefecture);
     setFamilyMembers(profile.familyMembers ?? []);
+    const fx: Record<string, string> = {};
+    for (const [k, v] of Object.entries(profile.manualFxRates ?? {})) {
+      fx[k] = String(v);
+    }
+    setManualFxRates(fx);
   }, [profile]);
 
   const birthYearNum = parseInt(birthYear) || currentYear - 30;
@@ -64,12 +70,18 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const fxRates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(manualFxRates)) {
+      const n = parseFloat(v);
+      if (n > 0) fxRates[k] = n;
+    }
     onSave({
       id: "default",
       displayName: displayName || undefined,
       birthYear: birthYearNum,
       prefecture,
       familyMembers,
+      manualFxRates: Object.keys(fxRates).length > 0 ? fxRates : undefined,
       updatedAt: new Date().toISOString(),
     });
     setSaved(true);
@@ -256,6 +268,33 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
               <p className="text-xs text-teal-500">収入プロファイルの手取り計算に使われます</p>
             </div>
           )}
+
+          {/* 為替レート手動設定 */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-500 mb-1 uppercase tracking-wide">為替レート手動設定</h3>
+            <p className="text-xs text-gray-400 mb-3">自動取得に失敗したときのフォールバック値として使用されます（円/1外貨）</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {CURRENCIES.filter(c => c.code !== "JPY").map(cur => (
+                <div key={cur.code}>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {cur.symbol} {cur.name}（{cur.code}）
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={manualFxRates[cur.code] ?? ""}
+                      onChange={e => setManualFxRates(prev => ({ ...prev, [cur.code]: e.target.value }))}
+                      placeholder="未設定"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">円</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
             <p className="text-xs text-gray-400">このプロフィールは収入追加時のデフォルト値として使用されます</p>
