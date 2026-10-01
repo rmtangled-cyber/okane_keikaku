@@ -9,7 +9,7 @@ import {
 import {
   Plus, TrendingUp, Wallet, Target, RefreshCw, Download,
   BarChart2, Layers, Receipt, MapPin, BookOpen, ChevronLeft,
-  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye, PiggyBank, X,
+  ChevronRight, CreditCard, Sun, Building2, Pencil, Trash2, UserRound, Landmark, CheckCircle2, Eye, PiggyBank, X, Globe, ShieldCheck,
 } from "lucide-react";
 
 import {
@@ -73,6 +73,8 @@ import MortgageCalc from "./MortgageCalc";
 import PropertyTaxModal from "./PropertyTaxModal";
 import TaxChecklist from "./TaxChecklist";
 import UserProfileTab from "./UserProfileTab";
+import FxRatesTab from "./FxRatesTab";
+import AccountTab from "./AccountTab";
 import CustomHomeTab from "./CustomHomeTab";
 import { useAuth } from "@/lib/auth-context";
 
@@ -92,7 +94,7 @@ const EXPENSE_CATEGORY_COLOR: Record<string, string> = {
   "娯楽費": "#ec4899", "教育費": "#22c55e", "保険料": "#6366f1", "その他": "#6b7280",
 };
 
-type Tab = "概要" | "株式" | "貯金" | "投資信託" | "投資物件" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "注文住宅" | "プロフィール";
+type Tab = "概要" | "株式" | "貯金" | "投資信託" | "投資物件" | "資産" | "目標" | "収支" | "家計簿" | "生活費" | "固定資産税" | "申請チェック" | "太陽光" | "住宅ローン" | "注文住宅" | "プロフィール" | "為替レート手動設定" | "アカウント管理";
 type TabGroup = "トップ" | "資産" | "生活費" | "マイホーム" | "設定";
 
 const LIFE_EXPENSE_PRESETS: { name: string; emoji: string; category: import("@/lib/types").ExpenseCategory; isFixed: boolean }[] = [
@@ -471,7 +473,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem("okane_tab");
-      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "投資物件", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "注文住宅", "プロフィール"];
+      const tabs: Tab[] = ["概要", "株式", "貯金", "投資信託", "投資物件", "生活費", "住宅ローン", "固定資産税", "太陽光", "申請チェック", "注文住宅", "プロフィール", "為替レート手動設定", "アカウント管理"];
       return (tabs.includes(saved as Tab) ? saved : "概要") as Tab;
     } catch { return "概要"; }
   });
@@ -502,7 +504,9 @@ export default function Dashboard() {
       { key: "申請チェック", label: "申請チェック", icon: <CheckCircle2 size={13} /> },
     ]},
     { group: "設定", icon: <UserRound size={14} />, tabs: [
-      { key: "プロフィール", label: "プロフィール", icon: <UserRound size={13} /> },
+      { key: "プロフィール",        label: "プロフィール",    icon: <UserRound size={13} /> },
+      { key: "為替レート手動設定",  label: "為替レート",      icon: <Globe size={13} /> },
+      { key: "アカウント管理",      label: "アカウント管理",  icon: <ShieldCheck size={13} /> },
     ]},
   ];
 
@@ -2160,6 +2164,20 @@ export default function Dashboard() {
             onSave={async (p) => { setUserProfile(p); await saveUserProfile(p); }}
             isViewer={!!viewerOwnerUid}
           />
+        )}
+
+        {/* ── 為替レート手動設定 ────────────────────────── */}
+        {tab === "為替レート手動設定" && (
+          <FxRatesTab
+            profile={userProfile}
+            onSave={async (p) => { setUserProfile(p); await saveUserProfile(p); }}
+            isViewer={!!viewerOwnerUid}
+          />
+        )}
+
+        {/* ── アカウント管理 ────────────────────────────── */}
+        {tab === "アカウント管理" && (
+          <AccountTab isViewer={!!viewerOwnerUid} />
         )}
 
       </main>
