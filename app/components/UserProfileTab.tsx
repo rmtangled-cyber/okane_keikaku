@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserProfile, FamilyMember } from "@/lib/types";
+import { UserProfile, FamilyMember, CURRENCIES } from "@/lib/types";
 import { PREFECTURES } from "@/lib/taxCalc";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -18,6 +18,7 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
   const [birthYear, setBirthYear] = useState(String(currentYear - 30));
   const [prefecture, setPrefecture] = useState("東京");
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [manualFxRates, setManualFxRates] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -26,6 +27,11 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
     setBirthYear(String(profile.birthYear));
     setPrefecture(profile.prefecture);
     setFamilyMembers(profile.familyMembers ?? []);
+    const fx: Record<string, string> = {};
+    for (const [k, v] of Object.entries(profile.manualFxRates ?? {})) {
+      fx[k] = String(v);
+    }
+    setManualFxRates(fx);
   }, [profile]);
 
   const birthYearNum = parseInt(birthYear) || currentYear - 30;
@@ -63,6 +69,11 @@ export default function UserProfileTab({ profile, onSave, isViewer }: Props) {
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const fxRates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(manualFxRates)) {
+      const n = parseFloat(v);
+      if (n > 0) fxRates[k] = n;
+    }
     onSave({
       id: "default",
       displayName: displayName || undefined,
