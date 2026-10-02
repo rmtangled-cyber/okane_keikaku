@@ -76,6 +76,7 @@ import UserProfileTab from "./UserProfileTab";
 import FxRatesTab from "./FxRatesTab";
 import AccountTab from "./AccountTab";
 import CustomHomeTab from "./CustomHomeTab";
+import Masked from "./Masked";
 import { useAuth } from "@/lib/auth-context";
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -445,7 +446,7 @@ function simulate(
 }
 
 export default function Dashboard() {
-  const { user, loading: authLoading, viewerOwnerUid, viewerDisplayName, signIn, signOut } = useAuth();
+  const { user, loading: authLoading, viewerOwnerUid, viewerDisplayName, isMasked, signIn, signOut } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [stocks, setStocks] = useState<StockHolding[]>([]);
   const [funds, setFunds] = useState<FundHolding[]>([]);
@@ -1160,11 +1161,11 @@ export default function Dashboard() {
         {/* Total Banner */}
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
           <p className="text-sm text-blue-200 mb-1">総資産</p>
-          <p className="text-4xl font-bold tracking-tight">¥{Math.round(grandTotal).toLocaleString()}</p>
+          <p className="text-4xl font-bold tracking-tight"><Masked>¥{Math.round(grandTotal).toLocaleString()}</Masked></p>
           <div className="flex gap-4 mt-3 text-xs text-blue-300 flex-wrap">
-            <span>株式 ¥{Math.round(stocksTotal).toLocaleString()}</span>
-            <span>貯金 ¥{Math.round(savingsTotal).toLocaleString()}</span>
-            <span>投資信託 ¥{Math.round(fundsTotal).toLocaleString()}</span>
+            <span>株式 <Masked>¥{Math.round(stocksTotal).toLocaleString()}</Masked></span>
+            <span>貯金 <Masked>¥{Math.round(savingsTotal).toLocaleString()}</Masked></span>
+            <span>投資信託 <Masked>¥{Math.round(fundsTotal).toLocaleString()}</Masked></span>
             <span>その他 ¥{Math.round(assetsTotal).toLocaleString()}</span>
           </div>
           <p className="text-xs text-blue-400 mt-1">{new Date().toLocaleDateString("ja-JP")} 現在</p>
@@ -1176,13 +1177,13 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-xs text-gray-500">株式</span></div>
-                <div className="font-bold text-gray-900">¥{Math.round(stocksTotal).toLocaleString()}</div>
-                <div className={`text-xs mt-0.5 ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}>{stocksGain >= 0 ? "+" : ""}{Math.round(stocksGain).toLocaleString()}円</div>
+                <div className="font-bold text-gray-900"><Masked>¥{Math.round(stocksTotal).toLocaleString()}</Masked></div>
+                <div className={`text-xs mt-0.5 ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}><Masked>{stocksGain >= 0 ? "+" : ""}{Math.round(stocksGain).toLocaleString()}円</Masked></div>
               </div>
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2"><div className="w-3 h-3 rounded-full bg-purple-500" /><span className="text-xs text-gray-500">投資信託</span></div>
-                <div className="font-bold text-gray-900">¥{Math.round(fundsTotal).toLocaleString()}</div>
-                <div className={`text-xs mt-0.5 ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}>{fundsGain >= 0 ? "+" : ""}{Math.round(fundsGain).toLocaleString()}円</div>
+                <div className="font-bold text-gray-900"><Masked>¥{Math.round(fundsTotal).toLocaleString()}</Masked></div>
+                <div className={`text-xs mt-0.5 ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}><Masked>{fundsGain >= 0 ? "+" : ""}{Math.round(fundsGain).toLocaleString()}円</Masked></div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1578,13 +1579,13 @@ export default function Dashboard() {
         {tab === "株式" && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
-              <div><div className="text-xs text-gray-400">評価額合計</div><div className="font-bold text-gray-900">¥{stocksTotal.toLocaleString()}</div></div>
-              <div><div className="text-xs text-gray-400">評価損益</div><div className={`font-bold ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}>{stocksGain >= 0 ? "+" : ""}{stocksGain.toLocaleString()}円</div></div>
+              <div><div className="text-xs text-gray-400">評価額合計</div><div className="font-bold text-gray-900"><Masked>¥{stocksTotal.toLocaleString()}</Masked></div></div>
+              <div><div className="text-xs text-gray-400">評価損益</div><div className={`font-bold ${stocksGain >= 0 ? "text-green-600" : "text-red-600"}`}><Masked>{stocksGain >= 0 ? "+" : ""}{stocksGain.toLocaleString()}円</Masked></div></div>
               <div className="border-l border-gray-100 pl-4">
                 <div className="text-xs text-gray-400">今売ったら税金（概算）</div>
-                <div className="font-bold text-orange-500">¥{stocksTax.toLocaleString()}</div>
+                <div className="font-bold text-orange-500"><Masked>¥{stocksTax.toLocaleString()}</Masked></div>
               </div>
-              <div><div className="text-xs text-gray-400">税引後手取り</div><div className="font-bold text-gray-700">¥{(stocksTotal - stocksTax).toLocaleString()}</div></div>
+              <div><div className="text-xs text-gray-400">税引後手取り</div><div className="font-bold text-gray-700"><Masked>¥{(stocksTotal - stocksTax).toLocaleString()}</Masked></div></div>
               <div className="text-xs text-gray-400 self-end w-full">※特定・一般口座のみ 20.315%</div>
             </div>
 
@@ -1630,7 +1631,7 @@ export default function Dashboard() {
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
               <div>
                 <span className="text-gray-500">残高合計</span>
-                <span className="ml-2 font-bold text-gray-900">¥{savingsTotal.toLocaleString()}</span>
+                <span className="ml-2 font-bold text-gray-900"><Masked>¥{savingsTotal.toLocaleString()}</Masked></span>
               </div>
               <div>
                 <span className="text-gray-500">口座数</span>
@@ -1668,7 +1669,7 @@ export default function Dashboard() {
                           )}
                         </div>
                         <div className="mt-2 flex items-baseline gap-3 flex-wrap">
-                          <span className="text-xl font-bold text-gray-900">¥{acct.balance.toLocaleString()}</span>
+                          <span className="text-xl font-bold text-gray-900"><Masked>¥{acct.balance.toLocaleString()}</Masked></span>
                           {acct.interestRate > 0 && (
                             <span className="text-xs text-green-600">金利 {acct.interestRate}%</span>
                           )}
@@ -1720,9 +1721,9 @@ export default function Dashboard() {
         {tab === "投資信託" && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-4 text-sm">
-              <div><div className="text-xs text-gray-400">評価額合計</div><div className="font-bold text-gray-900">¥{fundsTotal.toLocaleString()}</div></div>
-              <div><div className="text-xs text-gray-400">評価損益</div><div className={`font-bold ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}>{fundsGain >= 0 ? "+" : ""}{fundsGain.toLocaleString()}円</div></div>
-              <div><div className="text-xs text-gray-400">月次積立合計</div><div className="font-bold text-purple-700">¥{funds.reduce((s, f) => s + f.monthlyContribution, 0).toLocaleString()}</div></div>
+              <div><div className="text-xs text-gray-400">評価額合計</div><div className="font-bold text-gray-900"><Masked>¥{fundsTotal.toLocaleString()}</Masked></div></div>
+              <div><div className="text-xs text-gray-400">評価損益</div><div className={`font-bold ${fundsGain >= 0 ? "text-green-600" : "text-red-600"}`}><Masked>{fundsGain >= 0 ? "+" : ""}{fundsGain.toLocaleString()}円</Masked></div></div>
+              <div><div className="text-xs text-gray-400">月次積立合計</div><div className="font-bold text-purple-700"><Masked>¥{funds.reduce((s, f) => s + f.monthlyContribution, 0).toLocaleString()}</Masked></div></div>
             </div>
             {funds.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400 shadow-sm">

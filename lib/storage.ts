@@ -8,10 +8,16 @@ import { Asset, Goal, MonthlySnapshot, StockHolding, FundHolding, MonthlyExpense
 
 // ── Viewer mode state ─────────────────────────────────────────────────────────
 
+export type ViewerRole = "full" | "masked";
+export interface ViewerEntry { email: string; role: ViewerRole; }
+
 let _viewerOwnerUid: string | null = null;
+let _viewerRole: ViewerRole = "full";
 
 export function setViewerOwnerUid(uid: string | null) { _viewerOwnerUid = uid; }
+export function setViewerRole(role: ViewerRole) { _viewerRole = role; }
 export function isViewerMode(): boolean { return _viewerOwnerUid !== null; }
+export function isViewerMasked(): boolean { return isViewerMode() && _viewerRole === "masked"; }
 function currentDataUid(): string { return _viewerOwnerUid ?? auth.currentUser?.uid ?? "no-user"; }
 
 // ── Firestore helpers ─────────────────────────────────────────────────────────
@@ -268,41 +274,52 @@ export async function loadUserProfile(): Promise<UserProfile | null> {
 
 // ── Viewer management ─────────────────────────────────────────────────────────
 
-export async function lookupOwnerByViewerEmail(email: string): Promise<string | null> {
+export async function lookupOwnerByViewerEmail(email: string): Promise<{ ownerUid: string; role: ViewerRole } | null> {
   try {
     const snap = await getDoc(doc(db, "viewerIndex", email));
-    return snap.exists() ? (snap.data() as { ownerUid: string }).ownerUid : null;
+    if (!snap.exists()) return null;
+    const data = snap.data() as { ownerUid: string; role?: ViewerRole };
+    return { ownerUid: data.ownerUid, role: data.role ?? "full" };
   } catch { return null; }
 }
 
-export async function loadViewerEmails(): Promise<string[]> {
+export async function loadViewers(): Promise<ViewerEntry[]> {
   const ownerUid = auth.currentUser?.uid;
   if (!ownerUid) return [];
   try {
     const snap = await getDoc(doc(db, "users", ownerUid, "viewerEmails", "default"));
-    return snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
+    if (!snap.exists()) return [];
+    const data = snap.data() as { emails?: string[]; viewers?: ViewerEntry[] };
+    if (data.viewers && data.viewers.length > 0) return data.viewers;
+    // backward compat: old format only had emails array — treat all as full
+    return (data.emails ?? []).map(email => ({ email, role: "full" as ViewerRole }));
   } catch { return []; }
 }
 
-export async function addViewerEmail(viewerEmail: string): Promise<void> {
+export async function addViewer(viewerEmail: string, role: ViewerRole): Promise<void> {
   const ownerUid = auth.currentUser?.uid;
   if (!ownerUid || isViewerMode()) return;
   const emailsRef = doc(db, "users", ownerUid, "viewerEmails", "default");
   const snap = await getDoc(emailsRef);
-  const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
-  if (!current.includes(viewerEmail)) {
-    await setDoc(emailsRef, { emails: [...current, viewerEmail] });
-  }
-  await setDoc(doc(db, "viewerIndex", viewerEmail), { ownerUid });
+  const data = snap.exists() ? (snap.data() as { emails?: string[]; viewers?: ViewerEntry[] }) : {};
+  const emails: string[] = data.emails ?? [];
+  const viewers: ViewerEntry[] = data.viewers ?? [];
+  const newEmails = emails.includes(viewerEmail) ? emails : [...emails, viewerEmail];
+  const newViewers = viewers.filter(v => v.email !== viewerEmail).concat({ email: viewerEmail, role });
+  await setDoc(emailsRef, { emails: newEmails, viewers: newViewers });
+  await setDoc(doc(db, "viewerIndex", viewerEmail), { ownerUid, role });
 }
 
-export async function removeViewerEmail(viewerEmail: string): Promise<void> {
+export async function removeViewer(viewerEmail: string): Promise<void> {
   const ownerUid = auth.currentUser?.uid;
   if (!ownerUid || isViewerMode()) return;
   const emailsRef = doc(db, "users", ownerUid, "viewerEmails", "default");
   const snap = await getDoc(emailsRef);
-  const current: string[] = snap.exists() ? ((snap.data() as { emails: string[] }).emails ?? []) : [];
-  await setDoc(emailsRef, { emails: current.filter(e => e !== viewerEmail) });
+  const data = snap.exists() ? (snap.data() as { emails?: string[]; viewers?: ViewerEntry[] }) : {};
+  await setDoc(emailsRef, {
+    emails: (data.emails ?? []).filter(e => e !== viewerEmail),
+    viewers: (data.viewers ?? []).filter(v => v.email !== viewerEmail),
+  });
   try { await deleteDoc(doc(db, "viewerIndex", viewerEmail)); } catch { /* best effort */ }
 }
 
