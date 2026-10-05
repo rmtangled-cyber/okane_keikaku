@@ -10,6 +10,7 @@ import { auth } from "./firebase";
 import { setAuthUid } from "./uid";
 import {
   setViewerOwnerUid as storageSetViewerOwnerUid,
+  setViewerRole as storageSetViewerRole,
   lookupOwnerByViewerEmail,
   loadOwnerDisplayName,
 } from "./storage";
@@ -19,6 +20,7 @@ interface AuthContextValue {
   loading: boolean;
   viewerOwnerUid: string | null;
   viewerDisplayName: string | null;
+  isMasked: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [viewerOwnerUid, setViewerOwnerUid] = useState<string | null>(null);
   const [viewerDisplayName, setViewerDisplayName] = useState<string | null>(null);
+  const [isMasked, setIsMasked] = useState(false);
 
   useEffect(() => {
     // Safety timeout: if Firebase doesn't resolve auth state in 8s, unblock the UI
@@ -40,21 +43,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u?.email) {
-        const ownerUid = await lookupOwnerByViewerEmail(u.email);
-        if (ownerUid) {
-          storageSetViewerOwnerUid(ownerUid);
-          setViewerOwnerUid(ownerUid);
-          const name = await loadOwnerDisplayName(ownerUid);
+        const result = await lookupOwnerByViewerEmail(u.email);
+        if (result) {
+          storageSetViewerOwnerUid(result.ownerUid);
+          storageSetViewerRole(result.role);
+          setViewerOwnerUid(result.ownerUid);
+          setIsMasked(result.role === "masked");
+          const name = await loadOwnerDisplayName(result.ownerUid);
           setViewerDisplayName(name);
         } else {
           storageSetViewerOwnerUid(null);
+          storageSetViewerRole("full");
           setViewerOwnerUid(null);
           setViewerDisplayName(null);
+          setIsMasked(false);
         }
       } else {
         storageSetViewerOwnerUid(null);
+        storageSetViewerRole("full");
         setViewerOwnerUid(null);
         setViewerDisplayName(null);
+        setIsMasked(false);
       }
 
       setLoading(false);
@@ -80,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, viewerOwnerUid, viewerDisplayName, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, viewerOwnerUid, viewerDisplayName, isMasked, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

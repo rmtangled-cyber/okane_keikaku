@@ -2,6 +2,7 @@
 
 import { StockHolding, calcTax, getCurrencySymbol } from "@/lib/types";
 import { Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import Masked from "./Masked";
 
 const ACCOUNT_COLORS: Record<string, string> = {
   "特定口座": "bg-blue-100 text-blue-800",
@@ -14,6 +15,7 @@ const ACCOUNT_COLORS: Record<string, string> = {
 interface Props {
   stock: StockHolding;
   memberLabel?: string;
+  isMasked?: boolean;
   onEdit: (s: StockHolding) => void;
   onDelete: (id: string) => void;
 }
@@ -33,7 +35,7 @@ function toJPY(amount: number, currency: string, fxRates?: Record<string, number
   return rate ? amount * rate : null;
 }
 
-export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Props) {
+export default function StockCard({ stock, memberLabel, isMasked: _isMasked, onEdit, onDelete }: Props) {
   // 旧フィールド currency からの移行
   const legacyCur = stock.currency === "USD" ? "USD" : "JPY";
   const purchaseCur = stock.purchaseCurrency ?? legacyCur;
@@ -115,9 +117,9 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
       <div className="flex items-center justify-between pt-2 border-t border-gray-50">
         <div>
           <div className="text-xs text-gray-400 mb-0.5">評価額</div>
-          <div className="font-bold text-gray-900">{fmtPrice(currentTotalNative, currentCur)}</div>
+          <div className="font-bold text-gray-900"><Masked>{fmtPrice(currentTotalNative, currentCur)}</Masked></div>
           {currentCur !== "JPY" && currentTotalJPY != null && (
-            <div className="text-xs text-gray-400">≈ ¥{Math.round(currentTotalJPY).toLocaleString()}</div>
+            <div className="text-xs text-gray-400"><Masked>≈ ¥{Math.round(currentTotalJPY).toLocaleString()}</Masked></div>
           )}
           {missingRate && (
             <div className="text-xs text-orange-400">円換算: 一括取得で更新</div>
@@ -129,21 +131,23 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
               <div className="flex items-center gap-1 justify-end">
                 {isUp ? <TrendingUp size={14} className="text-green-500" /> : isDown ? <TrendingDown size={14} className="text-red-500" /> : <Minus size={14} className="text-gray-400" />}
                 <span className={`font-semibold text-sm ${isUp ? "text-green-600" : isDown ? "text-red-600" : "text-gray-500"}`}>
-                  {isUp ? "+" : ""}{fmtPrice(Math.abs(gainNative), currentCur)}
+                  <Masked>{isUp ? "+" : ""}{fmtPrice(Math.abs(gainNative), currentCur)}</Masked>
                 </span>
                 <span className={`text-xs ${isUp ? "text-green-500" : isDown ? "text-red-500" : "text-gray-400"}`}>
-                  ({isUp ? "+" : ""}{gainPct.toFixed(1)}%)
+                  <Masked>({isUp ? "+" : ""}{gainPct.toFixed(1)}%)</Masked>
                 </span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5">
-                {stock.accountType.startsWith("NISA") || stock.accountType === "iDeCo"
-                  ? "非課税口座 · 税金 ¥0"
-                  : missingRate
-                    ? "税計算: 一括取得後に表示"
-                    : gainJPY != null && gainJPY > 0 && tax != null && netJPY != null
-                      ? `税引後 ¥${Math.round(netJPY).toLocaleString()}（税 ¥${tax.toLocaleString()}）`
-                      : "含み損 · 税金なし"
-                }
+                <Masked>
+                  {stock.accountType.startsWith("NISA") || stock.accountType === "iDeCo"
+                    ? "非課税口座 · 税金 ¥0"
+                    : missingRate
+                      ? "税計算: 一括取得後に表示"
+                      : gainJPY != null && gainJPY > 0 && tax != null && netJPY != null
+                        ? `税引後 ¥${Math.round(netJPY).toLocaleString()}（税 ¥${tax.toLocaleString()}）`
+                        : "含み損 · 税金なし"
+                  }
+                </Masked>
               </div>
             </>
           ) : gainJPY != null ? (
@@ -151,7 +155,7 @@ export default function StockCard({ stock, memberLabel, onEdit, onDelete }: Prop
               <div className="flex items-center gap-1 justify-end">
                 {isUp ? <TrendingUp size={14} className="text-green-500" /> : isDown ? <TrendingDown size={14} className="text-red-500" /> : <Minus size={14} className="text-gray-400" />}
                 <span className={`font-semibold text-sm ${isUp ? "text-green-600" : isDown ? "text-red-600" : "text-gray-500"}`}>
-                  {isUp ? "+" : ""}¥{Math.abs(Math.round(gainJPY)).toLocaleString()}
+                  <Masked>{isUp ? "+" : ""}¥{Math.abs(Math.round(gainJPY)).toLocaleString()}</Masked>
                 </span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5">JPY換算損益</div>

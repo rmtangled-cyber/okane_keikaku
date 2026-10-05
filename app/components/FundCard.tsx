@@ -2,6 +2,7 @@
 
 import { FundHolding, calcTax } from "@/lib/types";
 import { Pencil, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import Masked from "./Masked";
 
 const ACCOUNT_COLORS: Record<string, string> = {
   "特定口座": "bg-blue-100 text-blue-800",
@@ -15,11 +16,12 @@ const ACCOUNT_COLORS: Record<string, string> = {
 interface Props {
   fund: FundHolding;
   memberLabel?: string;
+  isMasked?: boolean;
   onEdit: (f: FundHolding) => void;
   onDelete: (id: string) => void;
 }
 
-export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props) {
+export default function FundCard({ fund, memberLabel, isMasked: _isMasked, onEdit, onDelete }: Props) {
   const gain = fund.currentValue - fund.purchaseAmount;
   const gainPct = fund.purchaseAmount > 0 ? (gain / fund.purchaseAmount) * 100 : 0;
   const tax = calcTax(gain, fund.accountType);
@@ -57,11 +59,11 @@ export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props)
       <div className="grid grid-cols-2 gap-2 text-sm mb-3">
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-0.5">取得金額</div>
-          <div className="font-medium text-gray-700">¥{fund.purchaseAmount.toLocaleString()}</div>
+          <div className="font-medium text-gray-700"><Masked>¥{fund.purchaseAmount.toLocaleString()}</Masked></div>
         </div>
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="text-xs text-gray-400 mb-0.5">現在評価額</div>
-          <div className="font-bold text-gray-900">¥{fund.currentValue.toLocaleString()}</div>
+          <div className="font-bold text-gray-900"><Masked>¥{fund.currentValue.toLocaleString()}</Masked></div>
         </div>
       </div>
 
@@ -70,19 +72,21 @@ export default function FundCard({ fund, memberLabel, onEdit, onDelete }: Props)
         <div className="flex items-center gap-1">
           {isUp ? <TrendingUp size={14} className="text-green-500" /> : isDown ? <TrendingDown size={14} className="text-red-500" /> : <Minus size={14} className="text-gray-400" />}
           <span className={`font-semibold text-sm ${isUp ? "text-green-600" : isDown ? "text-red-600" : "text-gray-500"}`}>
-            {isUp ? "+" : ""}{gain.toLocaleString()}円
+            <Masked>{isUp ? "+" : ""}{gain.toLocaleString()}円</Masked>
           </span>
           <span className={`text-xs ${isUp ? "text-green-500" : isDown ? "text-red-500" : "text-gray-400"}`}>
-            ({isUp ? "+" : ""}{gainPct.toFixed(1)}%)
+            <Masked>({isUp ? "+" : ""}{gainPct.toFixed(1)}%)</Masked>
           </span>
         </div>
         <div className="text-xs text-gray-400 text-right">
-          {fund.accountType.startsWith("NISA") || fund.accountType === "iDeCo"
-            ? "非課税 · 税金 ¥0"
-            : gain > 0
-              ? `税引後 ¥${netProceeds.toLocaleString()}`
-              : "含み損 · 税金なし"
-          }
+          <Masked>
+            {fund.accountType.startsWith("NISA") || fund.accountType === "iDeCo"
+              ? "非課税 · 税金 ¥0"
+              : gain > 0
+                ? `税引後 ¥${netProceeds.toLocaleString()}`
+                : "含み損 · 税金なし"
+            }
+          </Masked>
         </div>
       </div>
 
